@@ -12,6 +12,8 @@ const clone = (value: any) =>
   value === undefined ? undefined : structuredClone(value);
 class MemoryFirestore {
   rows = new Map<string, any>();
+  commits: string[][] = [];
+  rejectWritePath: string | null = null;
   chain: Promise<unknown> = Promise.resolve();
   snapshot(path: string) {
     const value = clone(this.rows.get(path));
@@ -55,6 +57,7 @@ class MemoryFirestore {
   runTransaction<T>(callback: (tx: any) => Promise<T>): Promise<T> {
     const promise = this.chain.then(async () => {
       const writes: Array<() => void> = [];
+      const paths: string[] = [];
       let writing = false;
       const tx = {
         get: async (ref: any) => {
@@ -66,10 +69,14 @@ class MemoryFirestore {
           return this.snapshot(ref.path);
         },
         set: (ref: any, value: any) => {
+          paths.push(ref.path);
           writing = true;
           writes.push(() => this.rows.set(ref.path, clone(value)));
         },
         update: (ref: any, value: any) => {
+          if (this.rejectWritePath === ref.path)
+            throw new Error("Injected transaction write failure.");
+          paths.push(ref.path);
           writing = true;
           writes.push(() => {
             assert.ok(this.rows.has(ref.path));
@@ -80,12 +87,14 @@ class MemoryFirestore {
           });
         },
         delete: (ref: any) => {
+          paths.push(ref.path);
           writing = true;
           writes.push(() => this.rows.delete(ref.path));
         },
       };
       const result = await callback(tx);
       for (const write of writes) write();
+      this.commits.push(paths);
       return result;
     });
     this.chain = promise.catch(() => {});
@@ -263,11 +272,21 @@ test("Twitch authorization atomically enforces one owner per channel", async () 
     h.respond((url) =>
       url.endsWith("/validate") ? validationResponse() : authResponse(),
     );
-    const result = await Promise.allSettled([
-      h.api.saveAuthorization("owner-1", "code-one", ORIGIN),
-      h.api.saveAuthorization("owner-2", "code-two", ORIGIN),
-    ]);
-    assert.equal(result.filter((row) => row.status === "fulfilled").length, 1);
+    const owners = ["owner-1", "owner-2"];
+    const result = await Promise.allSettled(
+      owners.map((owner, index) =>
+        h.api.saveAuthorization(owner, `code-${index}`, ORIGIN),
+      ),
+    );
+    const winners = result.flatMap((outcome, index) =>
+      outcome.status === "fulfilled"
+        ? [{ owner: owners[index], channel: outcome.value }]
+        : [],
+    );
+    assert.equal(winners.length, 1);
+    const winner = winners[0];
+    const loser = owners.find((owner) => owner !== winner.owner)!;
+    assert.equal(winner.channel, "fixture_channel");
     assert.equal(
       [...h.db.rows.keys()].filter((key) => key.startsWith("integrations/"))
         .length,
@@ -275,8 +294,16 @@ test("Twitch authorization atomically enforces one owner per channel", async () 
     );
     assert.equal(
       h.db.rows.get("channels/" + hash("123456")).owner_id,
-      "owner-1",
+      winner.owner,
     );
+    const saved = h.db.rows.get("integrations/" + winner.owner);
+    assert.equal(saved.owner_id, winner.owner);
+    assert.equal(saved.broadcaster_id, "123456");
+    assert.equal(saved.channel, winner.channel);
+    assert.equal(h.db.rows.has("integrations/" + loser), false);
+    const rejected = result.find((outcome) => outcome.status === "rejected");
+    assert.ok(rejected && rejected.status === "rejected");
+    assert.equal(rejected.reason.status, 409);
   } finally {
     h.restore();
   }
@@ -796,6 +823,381 @@ test("an old revocation or missing-integration observation cannot pause a newer 
     assert.equal(
       h.db.rows.get("publicRooms/public-fixture").state.chatReady,
       true,
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+for (const status of [401, 403]) {
+  test(`a definitive chat ${status} immediately pauses the matching public invitation without resend`, async () => {
+    const h = await harness();
+    try {
+      await h.seed();
+      h.outbox();
+      h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+      let attempts = 0;
+      h.respond(() => {
+        attempts++;
+        return json({}, status);
+      });
+      await h.api.flushReply("owner-1", "event-1");
+      await h.api.flushReply("owner-1", "event-1");
+      assert.equal(attempts, 1);
+      const connection = h.db.rows.get("integrations/owner-1");
+      assert.equal(connection.status, "error");
+      assert.match(connection.error, /reconnect Twitch/);
+      assert.match(connection.delivery_error, /will not be resent/);
+      assert.equal(
+        h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+        false,
+      );
+      assert.equal(
+        h.db.rows.get("outbox/" + hash("owner-1:event-1")).status,
+        "failed",
+      );
+      const publicConnection = await h.api.connectionFor(
+        "owner-1",
+        new Request(ORIGIN),
+        true,
+      );
+      assert.equal(publicConnection.connected, false);
+      assert.equal(connection.chat_authorization_error, true);
+      assert.equal(
+        attempts,
+        1,
+        "Polling must not trust a cached token that was denied",
+      );
+      assert.equal(
+        h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+        false,
+      );
+      await assert.rejects(
+        h.api.subscriptions("owner-1", ORIGIN),
+        /Reconnect Twitch/,
+      );
+      assert.equal(attempts, 1);
+    } finally {
+      h.restore();
+    }
+  });
+}
+
+for (const change of ["reconnected", "rotated", "disconnecting"]) {
+  test(`an old send denial preserves a ${change} authorization`, async () => {
+    const h = await harness();
+    try {
+      await h.seed();
+      h.outbox();
+      h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady =
+        change !== "disconnecting";
+      const replacement = await h.token("replacement-access");
+      h.respond(() => {
+        const current = h.db.rows.get("integrations/owner-1");
+        h.db.rows.set("integrations/owner-1", {
+          ...current,
+          ...(change === "reconnected"
+            ? {
+                authorization_id: "new-authorization",
+                encrypted_tokens: replacement,
+              }
+            : {}),
+          ...(change === "rotated" ? { encrypted_tokens: replacement } : {}),
+          ...(change === "disconnecting" ? { status: "disconnecting" } : {}),
+          error: null,
+          delivery_error: null,
+        });
+        return json({}, 401);
+      });
+      await h.api.flushReply("owner-1", "event-1");
+      const current = h.db.rows.get("integrations/owner-1");
+      assert.equal(
+        current.status,
+        change === "disconnecting" ? "disconnecting" : "connected",
+      );
+      assert.equal(current.error, null);
+      assert.equal(current.delivery_error, null);
+      assert.equal(
+        h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+        change !== "disconnecting",
+      );
+      assert.equal(
+        h.db.rows.get("outbox/" + hash("owner-1:event-1")).status,
+        "failed",
+      );
+    } finally {
+      h.restore();
+    }
+  });
+}
+
+test("denial is correlated to the actual token returned when reconnect wins a refresh", async () => {
+  const h = await harness();
+  try {
+    await h.seed("owner-1", true);
+    h.outbox();
+    h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+    h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+    const replacement = await h.token("replacement-access");
+    let sends = 0;
+    h.respond((url, init) => {
+      if (url.includes("oauth2/token")) {
+        h.db.rows.set("integrations/owner-1", {
+          ...h.db.rows.get("integrations/owner-1"),
+          authorization_id: "new-authorization",
+          encrypted_tokens: replacement,
+          refresh_lease: null,
+        });
+        return authResponse();
+      }
+      sends++;
+      assert.equal(
+        new Headers(init.headers).get("Authorization"),
+        "Bearer replacement-access",
+      );
+      return json({}, 403);
+    });
+    await h.api.flushReply("owner-1", "event-1");
+    const current = h.db.rows.get("integrations/owner-1");
+    assert.equal(sends, 1);
+    assert.equal(current.authorization_id, "new-authorization");
+    assert.equal(current.status, "error");
+    assert.equal(
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+      false,
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+test("network ambiguity, rate limits, upstream failures, and held replies retain existing send behavior", async () => {
+  for (const reason of ["network", "429", "500", "409", "held"]) {
+    const h = await harness();
+    try {
+      await h.seed();
+      h.outbox();
+      h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+      let attempts = 0;
+      h.respond(() => {
+        attempts++;
+        if (reason === "network") throw new Error("Ambiguous send response");
+        return reason === "held"
+          ? json({ data: [{ is_sent: false }] })
+          : json({}, Number(reason));
+      });
+      await h.api.flushReply("owner-1", "event-1");
+      await h.api.flushReply("owner-1", "event-1");
+      assert.equal(attempts, 1, reason);
+      assert.equal(
+        h.db.rows.get("integrations/owner-1").status,
+        "connected",
+        reason,
+      );
+      assert.equal(
+        h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+        true,
+        reason,
+      );
+      assert.equal(
+        h.db.rows.get("outbox/" + hash("owner-1:event-1")).status,
+        "failed",
+        reason,
+      );
+    } finally {
+      h.restore();
+    }
+  }
+});
+
+test("new OAuth authorization clears a definitive chat denial and can verify normally", async () => {
+  const h = await harness();
+  try {
+    await h.seed();
+    h.outbox();
+    h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+    h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+    h.respond(() => json({}, 403));
+    await h.api.flushReply("owner-1", "event-1");
+    assert.equal(
+      h.db.rows.get("integrations/owner-1").chat_authorization_error,
+      true,
+    );
+    h.respond((url) =>
+      url.endsWith("/validate") ? validationResponse() : authResponse(),
+    );
+    await h.api.saveAuthorization("owner-1", "new-code", ORIGIN);
+    assert.equal(
+      h.db.rows.get("integrations/owner-1").chat_authorization_error,
+      undefined,
+    );
+    h.respond((url) =>
+      url.includes("oauth2/token")
+        ? json({ access_token: "app-token", expires_in: 3600 })
+        : json({
+            data: [
+              sub("chat-sub", "channel.chat.message"),
+              sub("raid-sub", "channel.raid"),
+            ],
+            pagination: {},
+          }),
+    );
+    const current = await h.api.connectionFor(
+      "owner-1",
+      new Request(ORIGIN),
+      true,
+    );
+    assert.equal(current.connected, true);
+    assert.equal(
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+      true,
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+test("an in-flight verification cannot restore readiness after the same token receives a chat denial", async () => {
+  const h = await harness();
+  try {
+    await h.seed();
+    h.outbox();
+    h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+    h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+    h.respond(async (url) => {
+      if (url.includes("oauth2/token"))
+        return json({ access_token: "app-token", expires_in: 3600 });
+      if (url.includes("eventsub/subscriptions")) {
+        await h.api.flushReply("owner-1", "event-1");
+        return json({
+          data: [
+            sub("chat-sub", "channel.chat.message"),
+            sub("raid-sub", "channel.raid"),
+          ],
+          pagination: {},
+        });
+      }
+      return json({}, 401);
+    });
+    const connection = await h.api.connectionFor(
+      "owner-1",
+      new Request(ORIGIN),
+      true,
+    );
+    assert.equal(connection.connected, false);
+    assert.equal(h.db.rows.get("integrations/owner-1").status, "error");
+    assert.equal(
+      h.db.rows.get("integrations/owner-1").chat_authorization_error,
+      true,
+    );
+    assert.equal(
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+      false,
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+for (const source of ["send", "refresh"]) {
+  test(`${source} authorization failure pauses its public snapshot in the same transaction`, async () => {
+    const h = await harness();
+    try {
+      await h.seed("owner-1", source === "refresh");
+      h.outbox();
+      h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+      h.respond(() => json({}, source === "send" ? 403 : 400));
+      await h.api.flushReply("owner-1", "event-1");
+      const outboxPath = "outbox/" + hash("owner-1:event-1");
+      assert.equal(h.db.rows.get("integrations/owner-1").status, "error");
+      assert.equal(
+        h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+        false,
+      );
+      assert.equal(h.db.rows.get(outboxPath).status, "failed");
+      assert.ok(
+        h.db.commits.some(
+          (paths) =>
+            paths.includes("integrations/owner-1") &&
+            paths.includes("publicRooms/public-fixture") &&
+            (source === "refresh" || paths.includes(outboxPath)),
+        ),
+        "public pause and authorization error must commit together; a send denial also commits outbox failure",
+      );
+    } finally {
+      h.restore();
+    }
+  });
+}
+
+test("a public-pause write failure cannot leave committed authorization or failed outbox state", async () => {
+  const h = await harness();
+  try {
+    await h.seed();
+    h.outbox();
+    h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+    h.db.rows.get("publicRooms/public-fixture").state.chatReady = true;
+    h.db.rejectWritePath = "publicRooms/public-fixture";
+    let sends = 0;
+    h.respond(() => {
+      sends++;
+      return json({}, 401);
+    });
+    await assert.rejects(
+      h.api.flushReply("owner-1", "event-1"),
+      /Injected transaction write failure/,
+    );
+    assert.equal(sends, 1);
+    const connection = h.db.rows.get("integrations/owner-1");
+    assert.equal(connection.status, "connected");
+    assert.equal(connection.chat_authorization_error, undefined);
+    assert.equal(connection.error, null);
+    assert.equal(connection.delivery_error, null);
+    assert.equal(
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+      true,
+    );
+    assert.equal(
+      h.db.rows.get("outbox/" + hash("owner-1:event-1")).status,
+      "sending",
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+test("an atomic authorization pause never mutates another owner's public snapshot", async () => {
+  const h = await harness();
+  try {
+    await h.seed();
+    h.outbox();
+    h.db.rows.set("rooms/owner-1", { public_id: "public-fixture" });
+    let foreign: Record<string, unknown> | undefined;
+    h.respond(() => {
+      foreign = {
+        ...h.db.rows.get("publicRooms/public-fixture"),
+        owner_id: "owner-2",
+        state: { chatReady: true },
+      };
+      h.db.rows.set("publicRooms/public-fixture", foreign);
+      return json({}, 403);
+    });
+    await h.api.flushReply("owner-1", "event-1");
+    assert.equal(h.db.rows.get("integrations/owner-1").status, "error");
+    assert.equal(h.db.rows.get("publicRooms/public-fixture"), foreign);
+    assert.equal(
+      h.db.rows.get("publicRooms/public-fixture").state.chatReady,
+      true,
+    );
+    assert.equal(
+      h.db.commits.some((paths) =>
+        paths.includes("publicRooms/public-fixture"),
+      ),
+      false,
     );
   } finally {
     h.restore();

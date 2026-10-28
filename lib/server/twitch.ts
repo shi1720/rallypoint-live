@@ -22,6 +22,7 @@ export type Integration = {
   updated_at: string;
   authorization_id?: string;
   delivery_error?: string | null;
+  chat_authorization_error?: boolean;
   refresh_lease?: { id: string; until: number } | null;
 };
 type Tokens = {
@@ -57,6 +58,32 @@ class TwitchRequestError extends HttpError {
 }
 const integrationRef = (owner: string) =>
   store().collection("integrations").doc(owner);
+type PublicConnectionSnapshot = {
+  ref: DocumentReference;
+  state: Record<string, unknown>;
+};
+async function readPublicConnection(
+  owner: string,
+  tx: Transaction,
+): Promise<PublicConnectionSnapshot | null> {
+  const room = await tx.get(store().collection("rooms").doc(owner));
+  if (!room.exists) return null;
+  const publicId: unknown = room.get("public_id");
+  if (typeof publicId !== "string" || !publicId) return null;
+  const ref = store().collection("publicRooms").doc(publicId);
+  const view = await tx.get(ref);
+  const data = view.data();
+  if (!view.exists || !data || data.owner_id !== owner || !isRecord(data.state))
+    return null;
+  return { ref, state: data.state };
+}
+function pausePublicConnection(
+  tx: Transaction,
+  view: PublicConnectionSnapshot | null,
+) {
+  if (view && view.state.chatReady !== false)
+    tx.update(view.ref, { state: { ...view.state, chatReady: false } });
+}
 let appCache: { token: string; expiresAt: number; client: string } | null =
   null;
 let appFlight: { client: string; promise: Promise<string> } | null = null;
@@ -283,6 +310,11 @@ export async function saveAuthorization(
 
 /** A short distributed lease prevents separate instances from rotating the same refresh token. */
 export async function userToken(initial: Integration): Promise<string> {
+  return (await userAuthorization(initial)).token;
+}
+async function userAuthorization(
+  initial: Integration,
+): Promise<{ token: string; authorization: Integration }> {
   const ref = integrationRef(initial.owner_id),
     leaseId = crypto.randomUUID(),
     deadline = Date.now() + 6500;
@@ -302,6 +334,11 @@ export async function userToken(initial: Integration): Promise<string> {
         throw new HttpError(
           401,
           "Twitch is disconnecting or has changed. Refresh the studio.",
+        );
+      if (row.chat_authorization_error)
+        throw new HttpError(
+          401,
+          "Twitch rejected chat authorization. Reconnect Twitch.",
         );
       const tokens = await decrypt<Tokens>(
         row.encrypted_tokens,
@@ -331,7 +368,8 @@ export async function userToken(initial: Integration): Promise<string> {
       });
       return { row, tokens, mode: "claimed" as const };
     });
-    if (claim.mode === "ready") return claim.tokens.access_token;
+    if (claim.mode === "ready")
+      return { token: claim.tokens.access_token, authorization: claim.row };
     if (claim.mode === "wait") {
       if (Date.now() >= deadline)
         throw new HttpError(
@@ -400,20 +438,28 @@ export async function userToken(initial: Integration): Promise<string> {
           current.encrypted_tokens !== claim.row.encrypted_tokens ||
           current.refresh_lease?.id !== leaseId
         )
-          return false;
-        tx.update(ref, {
+          return null;
+        const refreshed: Integration = {
+          ...current,
           encrypted_tokens: encrypted,
           refresh_lease: null,
           error: null,
           updated_at: new Date().toISOString(),
+        };
+        tx.update(ref, {
+          encrypted_tokens: refreshed.encrypted_tokens,
+          refresh_lease: null,
+          error: null,
+          updated_at: refreshed.updated_at,
         });
-        return true;
+        return refreshed;
       });
-      if (committed) return next.access_token;
+      if (committed)
+        return { token: next.access_token, authorization: committed };
       // A reconnect won the race. Read its current token rather than return ours.
       continue;
     } catch (error) {
-      const revokedAuthorization = await store().runTransaction(async (tx) => {
+      await store().runTransaction(async (tx) => {
         const snapshot = await tx.get(ref);
         if (!snapshot.exists) return null;
         const current = snapshot.data() as Integration;
@@ -426,6 +472,9 @@ export async function userToken(initial: Integration): Promise<string> {
           (error instanceof HttpError && error.status === 401) ||
           (error instanceof TwitchRequestError &&
             [400, 401].includes(error.upstreamStatus));
+        const publication = revoked
+          ? await readPublicConnection(initial.owner_id, tx)
+          : null;
         tx.update(ref, {
           refresh_lease: null,
           ...(revoked
@@ -436,14 +485,8 @@ export async function userToken(initial: Integration): Promise<string> {
               }
             : {}),
         });
-        return revoked ? { ...current, status: "error" } : null;
+        pausePublicConnection(tx, publication);
       });
-      if (revokedAuthorization)
-        await syncPublicConnection(
-          initial.owner_id,
-          false,
-          revokedAuthorization,
-        );
       if (
         error instanceof TwitchRequestError &&
         [400, 401].includes(error.upstreamStatus)
@@ -508,6 +551,11 @@ export async function subscriptions(
   const row = await integration(owner);
   if (!row || row.status === "disconnecting")
     throw new HttpError(409, "Connect a Twitch channel first.");
+  if (row.chat_authorization_error)
+    throw new HttpError(
+      409,
+      "Reconnect Twitch before retrying event subscriptions.",
+    );
   const token = await appToken(),
     listing = await listEventSubscriptions(token),
     target = `${origin}/api/twitch/webhook`;
@@ -633,7 +681,10 @@ export async function syncPublicConnection(
       return;
     // An in-flight verification must never restore invitations after disconnect.
     const chatReady =
-      ready && current.exists && current.data()?.status === "connected";
+      ready &&
+      current.exists &&
+      current.data()?.status === "connected" &&
+      !current.data()?.chat_authorization_error;
     if (document.state.chatReady !== chatReady)
       tx.update(publicRef, { state: { ...document.state, chatReady } });
   });
@@ -655,7 +706,12 @@ export async function connectionFor(
   }
   let status = row.status,
     error = row.error;
-  if (refresh && base.configured && status !== "disconnecting") {
+  if (
+    refresh &&
+    base.configured &&
+    status !== "disconnecting" &&
+    !row.chat_authorization_error
+  ) {
     try {
       await userToken(row);
       const all = await listEventSubscriptions(await appToken()),
@@ -684,6 +740,7 @@ export async function connectionFor(
         if (
           !snapshot.exists ||
           !authorizationMatches(snapshot.data() as Integration, original) ||
+          snapshot.data()?.chat_authorization_error ||
           snapshot.data()?.status === "disconnecting"
         )
           return null;
@@ -704,7 +761,8 @@ export async function connectionFor(
       error = "Unable to verify Twitch. Reconnect or retry.";
     }
   }
-  const ready = base.configured && status === "connected";
+  const ready =
+    base.configured && status === "connected" && !row.chat_authorization_error;
   if (refresh) await syncPublicConnection(owner, ready, row);
   return {
     ...base,
@@ -903,11 +961,13 @@ export async function flushReply(
   });
   if (!message) return;
   let sendAttempted = false;
+  let attemptedAuthorization: Integration | undefined;
   try {
     const row = await integration(owner);
     if (!row || row.status === "disconnecting")
       throw new HttpError(401, "Twitch is disconnected.");
-    const token = await userToken(row);
+    const authorized = await userAuthorization(row);
+    attemptedAuthorization = authorized.authorization;
     // Token renewal can take several seconds. Check again immediately before sending.
     if (!(await invitationIsCurrent(message, owner)))
       throw new HttpError(
@@ -915,11 +975,11 @@ export async function flushReply(
         "The queued reply was superseded by a newer or closed brief.",
       );
     sendAttempted = true;
-    const sent = await helix("chat/messages", token, {
+    const sent = await helix("chat/messages", authorized.token, {
       method: "POST",
       body: JSON.stringify({
-        broadcaster_id: row.broadcaster_id,
-        sender_id: row.broadcaster_id,
+        broadcaster_id: authorized.authorization.broadcaster_id,
+        sender_id: authorized.authorization.broadcaster_id,
         message: message.reply,
         ...(message.parent_id
           ? { reply_parent_message_id: message.parent_id }
@@ -937,29 +997,68 @@ export async function flushReply(
       if (snapshot.exists) tx.update(ref, { status: "sent", error: null });
       if (
         connection.exists &&
-        authorizationMatches(connection.data() as Integration, row)
+        authorizationMatches(
+          connection.data() as Integration,
+          authorized.authorization,
+        )
       )
         tx.update(integrationRef(owner), { delivery_error: null });
     });
   } catch (error) {
     const retrySafe = !sendAttempted && transient(error);
-    const detail = retrySafe
-      ? "Chat delivery is waiting for Twitch to recover. Retrying shortly."
-      : !sendAttempted && error instanceof HttpError
-        ? error.message
-        : "A chat reply was not confirmed by Twitch. It will not be resent automatically.";
+    const denied =
+      sendAttempted &&
+      error instanceof TwitchRequestError &&
+      [401, 403].includes(error.upstreamStatus);
+    const permissionError =
+      "Twitch rejected chat authorization. Check channel access and reconnect Twitch.";
+    const detail = denied
+      ? `${permissionError} This reply will not be resent automatically.`
+      : retrySafe
+        ? "Chat delivery is waiting for Twitch to recover. Retrying shortly."
+        : !sendAttempted && error instanceof HttpError
+          ? error.message
+          : "A chat reply was not confirmed by Twitch. It will not be resent automatically.";
     await store().runTransaction(async (tx) => {
       const [snapshot, connection] = await Promise.all([
         tx.get(ref),
         tx.get(integrationRef(owner)),
       ]);
+      const current = connection.exists
+        ? (connection.data() as Integration)
+        : null;
+      // A delayed failure belongs to the exact token that made the request.
+      // A reconnect or successful rotation must retain its fresh authorization.
+      const revoked =
+        denied &&
+        current !== null &&
+        current.status !== "disconnecting" &&
+        attemptedAuthorization !== undefined &&
+        authorizationMatches(current, attemptedAuthorization) &&
+        current.encrypted_tokens === attemptedAuthorization.encrypted_tokens;
+      const publication = revoked
+        ? await readPublicConnection(owner, tx)
+        : null;
+      // Finish every read before committing reply, authorization, and public readiness together.
       if (snapshot.exists)
         tx.update(ref, {
           status: retrySafe ? "pending" : "failed",
           error: detail,
         });
-      if (connection.exists)
-        tx.update(integrationRef(owner), { delivery_error: detail });
+      if (!current) return;
+      if (denied) {
+        if (!revoked) return;
+        tx.update(integrationRef(owner), {
+          status: "error",
+          error: permissionError,
+          delivery_error: detail,
+          chat_authorization_error: true,
+          updated_at: new Date().toISOString(),
+        });
+        pausePublicConnection(tx, publication);
+        return;
+      }
+      tx.update(integrationRef(owner), { delivery_error: detail });
     });
     if (retrySafe)
       throw new HttpError(

@@ -64,7 +64,12 @@ export async function handleWebhook(request: Request) {
     )
       return new Response("Invalid challenge", { status: 400 });
     return new Response(payload.challenge, {
-      headers: { "Content-Type": "text/plain" },
+      headers: {
+        "Content-Type": "text/plain",
+        "Content-Length": String(
+          new TextEncoder().encode(payload.challenge).byteLength,
+        ),
+      },
     });
   }
   if (type === "revocation") {

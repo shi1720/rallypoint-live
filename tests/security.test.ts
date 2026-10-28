@@ -369,13 +369,17 @@ test("webhook verifies a real signed callback challenge without exposing integra
   const { harness, handle, signed } = await webhookHarness();
   const response = await handle(
     await signed(
-      { ...chatPayload(), challenge: "challenge-opaque-value" },
+      { ...chatPayload(), challenge: "challenge-opaque-value-✓" },
       { type: "webhook_callback_verification" },
     ),
   );
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "text/plain");
-  assert.equal(await response.text(), "challenge-opaque-value");
+  assert.equal(
+    response.headers.get("Content-Length"),
+    String(Buffer.byteLength("challenge-opaque-value-✓")),
+  );
+  assert.equal(await response.text(), "challenge-opaque-value-✓");
   assert.equal(harness.mutations.length, 0);
 });
 

@@ -363,6 +363,38 @@ try {
   ).trim();
   delivery = randomUUID();
   fixtures[0].receiptKeys = [];
+  const challenge = "rallypoint-signed-challenge-" + randomUUID(),
+    challengeId = randomUUID(),
+    challengeTime = new Date().toISOString(),
+    challengeBody = JSON.stringify({
+      challenge,
+      subscription: {
+        type: "channel.chat.message",
+        condition: { broadcaster_user_id: broadcaster, user_id: broadcaster },
+      },
+    });
+  const challengeResponse = await fetch(origin + "/api/twitch/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Twitch-Eventsub-Message-Id": challengeId,
+      "Twitch-Eventsub-Message-Timestamp": challengeTime,
+      "Twitch-Eventsub-Message-Type": "webhook_callback_verification",
+      "Twitch-Eventsub-Message-Signature":
+        "sha256=" + createHmac("sha256", secret)
+          .update(challengeId + challengeTime + challengeBody)
+          .digest("hex"),
+    },
+    body: challengeBody,
+  });
+  check(
+    challengeResponse.status === 200 &&
+      challengeResponse.headers.get("content-type") === "text/plain" &&
+      challengeResponse.headers.get("content-length") ===
+        String(Buffer.byteLength(challenge)) &&
+      (await challengeResponse.text()) === challenge,
+    "signed Twitch callback returns the raw challenge with the required byte length",
+  );
   async function hook(
     valid = true,
     when = new Date().toISOString(),
