@@ -1,13 +1,29 @@
 # Privacy and data controls
 
-Rallypoint does not record stream audio/video and does not archive ordinary chat. It processes the recognized commands `!join`, `!vote`, `!pitch`, `!catchup` and incoming raid events.
+Rallypoint does not record stream audio or video and does not archive ordinary chat. It processes recognized `!join`, `!vote`, `!pitch`, and `!catchup` commands and incoming raid events.
 
-The authenticated studio retains Twitch user IDs and display names for vote deduplication, the selected choice and time, pitches with their originating chat-message ID, raid channel and viewer count, published briefs and bounded activity history. Tokens are encrypted with AES-256-GCM using a server-managed key. Twitch user names, IDs, private pitches, OAuth data, cooldowns and replay receipts never appear in the public API. The published brief, aggregate participation results and raiding channel are public wherever the approved brief is shared.
+## Account and private workspace
 
-Use Export before Reset session to retain a copy. Reset replaces the studio's session state. Disconnect erases locally stored Twitch authorization and chat outbox rows and attempts to revoke authorization and remove remote subscriptions. You can also revoke access through Twitch's Connections settings. Hosted infrastructure may retain backups/logs under its own policies; this application does not promise deletion from those systems. No payment or independent analytics provider is integrated.
+Firebase Authentication manages email/password and browser-owned guest identities. A fresh verified Firebase token becomes an HTTP-only, SameSite session cookie named `__session`, with a five-day maximum lifetime. Production cookies use Secure. Private requests verify the session and owner on the server. Publicly supplied identity headers do not create an authenticated workspace.
 
-The public viewer page sets one first-party HTTP-only SameSite cookie per brief link for a day to limit repeated open counts. Opens are approximate browser activity, not unique people or retention. Rehearsal data stays in browser localStorage and contains fictional people/events. Reset scenario restores the demo. Clear site storage to erase it entirely.
+A private workspace retains its published briefs, Twitch user IDs and display names for vote deduplication, selected choices and times, private pitches with their originating chat-message IDs, raid channel names and announced counts, and bounded activity history. OAuth access and refresh tokens are encrypted at rest using AES-GCM with a server-managed key.
 
-Sessions have bounded capacity and do not automatically delete their vote/pitch history on a calendar schedule. Export and reset between streams, especially before sharing access to the creator's device. Event receipts/outbox records are operational metadata and are separate from the visible session export. They contain delivery IDs and owner IDs, and outbox text may contain the approved brief. Separate moderator accounts and granular team access are not implemented.
+The database is server-accessed. Firestore client rules deny direct access. A separate public snapshot contains approved brief text, aggregate participation results, and incoming raid information. It excludes participant identities, private pitches, authorization, and internal cooldown/delivery records.
 
-This document describes implemented behavior and is not a legal compliance certification. Before a wider commercial launch, establish a suitable retention policy, user-account deletion process, creator terms, abuse controls and infrastructure backup/deletion policy with qualified review.
+## Browser storage
+
+The sample scenario stores fictional state in browser localStorage. Its reset control restores the initial example; clearing site storage erases that browser's scenario.
+
+Firebase's browser persistence maintains sign-in state. Guest users should create an email/password account to keep the same workspace across devices. Clearing browser storage or signing out before upgrading can make a guest workspace inaccessible.
+
+A randomly generated browser identifier is stored under `rallypoint.viewer-id` and sent with viewer-open requests. The server combines it with the page and date for approximate daily deduplication. It is not a fingerprint, a unique-person metric, or a retention measure. It can be reset or spoofed, so counts remain approximate.
+
+## Export, reset, and disconnect
+
+Export the session before using **Start new session**. Reset clears the workspace's brief content, contributions, pitches, raids, and activity while retaining its public links and Twitch authorization. Version numbers remain monotonic so delayed commands cannot be mistaken for a later decision. Reset is not a claim of deletion from infrastructure backups or logs.
+
+Disconnect erases locally stored Twitch authorization and attempts remote subscription cleanup and token revocation. If Twitch cleanup cannot be confirmed, revoke access from Twitch Connections. Operational receipts, open-count records, and reply outbox documents are separate from the visible session state and use expiry fields. Cloud Tasks carries only the delivery identifiers required to process committed replies.
+
+Session content has bounded capacity but no automatic calendar-based deletion. Infrastructure retention, TTL configuration, and backup deletion policies are separate operational controls. Separate moderator accounts and granular team roles are not implemented. No payment provider or independent advertising analytics provider is integrated.
+
+This document describes the current implementation. It does not claim a legal compliance certification, independent security certification, or deletion guarantees beyond the implemented controls.

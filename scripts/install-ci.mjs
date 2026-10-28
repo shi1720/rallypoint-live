@@ -1,49 +1,56 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
-import { projectRoot } from "./sites-env.mjs";
-import { readExecutionProfile } from "./execution-profile.mjs";
-import { runNpmInstall } from "./npm-install.mjs";
+import { fileURLToPath } from "node:url";
 
+const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 24 || (major === 24 && minor < 12)) {
+  throw new Error(
+    "Rallypoint requires Node.js 24.12 or newer. Select that runtime before installing.",
+  );
+}
 if (!process.env.npm_execpath) {
   throw new Error("Run this installer with npm run install:ci.");
 }
-
-if (![
-  "SHARP_IGNORE_GLOBAL_LIBVIPS",
-  "SHARP_FORCE_GLOBAL_LIBVIPS",
-  "npm_config_build_from_source",
-  "NPM_CONFIG_BUILD_FROM_SOURCE",
-].some((key) => key in process.env)) {
+if (
+  !["SHARP_IGNORE_GLOBAL_LIBVIPS", "SHARP_FORCE_GLOBAL_LIBVIPS"].some(
+    (name) => name in process.env,
+  )
+) {
   process.env.SHARP_IGNORE_GLOBAL_LIBVIPS = "1";
 }
-
-if (readExecutionProfile() === "managed-linux") {
-  const result = spawnSync("bash", [path.join(projectRoot, "scripts/install-ci.sh")], {
-    stdio: "inherit",
-  });
-  if (result.error) throw result.error;
-  process.exit(result.status ?? 1);
-}
-
-// Invoke npm's JavaScript entrypoint, avoiding platform-specific shell shims.
-const installed = await runNpmInstall([
+const result = spawnSync(
   process.execPath,
-    process.env.npm_execpath, "ci", "--prefix", projectRoot, "--workspaces=false",
-    "--include=dev", "--include=optional", "--prefer-offline", "--no-audit", "--no-fund",
-]);
-if (installed.signal) process.kill(process.pid, installed.signal);
-if (installed.code !== 0 || installed.signal) process.exit(installed.code || 1);
-
+  [
+    process.env.npm_execpath,
+    "ci",
+    "--include=dev",
+    "--include=optional",
+    "--no-audit",
+    "--no-fund",
+  ],
+  {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: process.env,
+  },
+);
+if (result.error) throw result.error;
+if (result.signal) process.kill(process.pid, result.signal);
+if (result.status !== 0) process.exit(result.status ?? 1);
 try {
   accessSync(
     path.join(
-      projectRoot, "node_modules", ".bin",
-      process.platform === "win32" ? "vinext.cmd" : "vinext",
+      projectRoot,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "next.cmd" : "next",
     ),
     process.platform === "win32" ? constants.F_OK : constants.X_OK,
   );
 } catch {
-  console.error("npm ci exited successfully but the local vinext executable is unavailable.");
-  process.exitCode = 69;
+  throw new Error(
+    "Installation finished, but the Next.js executable is missing. Run npm ci again and inspect its output.",
+  );
 }

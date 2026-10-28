@@ -1,22 +1,22 @@
-import { env } from "cloudflare:workers";
-export type RallyEnv = Cloudflare.Env & {
-  DB: D1Database;
+export type RallyEnv = {
+  GOOGLE_CLOUD_PROJECT?: string;
+  FIRESTORE_DATABASE_ID?: string;
+  FIREBASE_WEB_CONFIG?: string;
   TWITCH_CLIENT_ID?: string;
   TWITCH_CLIENT_SECRET?: string;
   TWITCH_WEBHOOK_SECRET?: string;
   TOKEN_ENCRYPTION_KEY?: string;
   SITE_URL?: string;
+  CLOUD_TASKS_QUEUE?: string;
+  CLOUD_TASKS_LOCATION?: string;
 };
 export function runtime(): RallyEnv {
-  if (!env.DB)
-    throw new Error(
-      "Database unavailable. Apply the documented D1 migrations.",
-    );
-  return env as RallyEnv;
+  return process.env as RallyEnv;
 }
 export function siteOrigin(request: Request): string {
   const configured = runtime().SITE_URL;
-  return configured ? new URL(configured).origin : new URL(request.url).origin;
+  if (configured) return new URL(configured).origin;
+  return new URL(request.url).origin;
 }
 export function configured(): boolean {
   const e = runtime();

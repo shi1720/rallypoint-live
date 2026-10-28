@@ -1,47 +1,64 @@
 # Rallypoint
 
-**Tagline:** Give every new arrival a way into the story.
+**Tagline:** Give every Twitch viewer a way in. One approved brief connects the current goal to a clear action in chat.
 
 **Creator:** Shivam Gupta
-
+**Application:** https://rallypoint-desk.web.app
 **Repository:** https://github.com/shi1720/rallypoint-live
+**Main Codex session:** `01a181e2-464a-7302-821d-a300d09b283c`
 
-**Try it:** https://rallypoint-live-shivam.sg127977958.chatgpt.site — owner-private initially; public judging access still needs verification.
-
-**Video:** USER ACTION NEEDED — insert the public YouTube URL after recording the real Twitch demonstration.
-
-**Codex session ID:** `01a181e2-464a-7302-821d-a300d09b283c` (main build chat; confirm with /status before copying).
+Use the sections below as the Project Story. The video URL belongs in the separate video field after the public upload is verified.
 
 ## Inspiration
 
-Joining a live stream halfway through can feel like walking into a room where everyone knows the story except you. A welcome alert says hello. A summary explains the past. We wanted to make the next step obvious: what are we trying to do, why does it matter, and how can I help right now?
+You arrive halfway through a stream. Someone shouts, “Save Bubbles!” Chat is choosing between a bridge and a tunnel. Everyone else knows why it matters. You are still trying to work out who Bubbles is.
+
+A welcome alert can say hello. A summary can explain what happened. We wanted to make the next step clear: what is the community trying to do right now, why does it matter, and how can the next person help?
+
+That question shaped Rallypoint. We focused on creators running shared challenges, collaborative builds, and ongoing tabletop stories, where context changes and new arrivals deserve a role in the next moment.
 
 ## What it does
 
-Rallypoint is a participation desk for Twitch communities. A creator publishes one short brief: the current goal, context, stakes, an exact `!join A` or `!join B` action and an expiry. New arrivals can read it on the public page, see it on an OBS overlay or request it in chat with `!catchup`.
+Rallypoint is a participation desk for Twitch. A creator publishes one short brief with the current goal, context, stakes, choices, and expiry. The same approved version powers a shareable viewer page, an OBS browser-source overlay, and the `!catchup` chat response.
 
-The community helps maintain the story through `!pitch`. Suggestions enter a review queue; they do not automatically become stream copy. The creator can reject misleading proposals and incorporate useful context into the next approved brief. Incoming Twitch raids receive a welcome connected to the current moment. Valid participation commands become visible counts, and expired or closed briefs stop inviting people into a finished choice.
+Viewers can type `!join A` or `!join B` to take part in the current decision. Each viewer has one vote per chapter and can change their choice. They can also suggest useful context through `!pitch`. A pitch enters the private review queue. Accepting it saves it for editing; only an explicit publish action makes revised context public.
 
-## Why this approach
+An incoming raid can display a welcome beside the current brief. Closing or expiring a chapter ends its invitation. Public pages hide live commands when fresh state or channel readiness cannot be confirmed. Participation insights count observed actions, not inferred raiders or viewer retention.
 
-Rallypoint focuses on the bridge from understanding to participating. Native summaries and capable AI bots already exist. Our contribution is a small, creator-controlled workflow that keeps the same actionable brief across the desk, chat, public page and overlay.
+A clearly labeled sample scenario lets anyone explore the workflow without an account. Real guest workspaces and email/password accounts support publishing, private review, export, and guarded session resets.
 
-The runtime is deterministic and needs no OpenAI API key. That keeps the core inexpensive to run and makes it possible to inspect how a suggestion, command or event changes the published state.
+## How we built it
 
-## How we used Codex
+Shivam Gupta directed the product ambition, practical scope, operating-cost constraints, and verification priorities. Codex supported competitor research, implementation, interface refinement, test development, and code review.
 
-Shivam Gupta set the ambition, directed the product scope and emphasized commercial viability, free-first operation and an honest, usable end-to-end experience. Codex supported research, implementation, test development and documentation. The repository preserves the actual implementation and verification instructions so that judges can evaluate the work directly.
+The app runs on native Next.js and React, with Firebase Hosting providing the clean URL. Cloud Run serves the application. Firebase Authentication verifies users, and the server exchanges fresh ID tokens for secure sessions. Private operations check the authenticated owner.
 
-## Commercial direction
+A named Cloud Firestore database stores transactional state, event receipts, encrypted Twitch authorization, and a separate sanitized public snapshot. Cloud Tasks processes committed chat replies. Twitch OAuth, EventSub, and Helix connect broadcaster authorization, signed events, and chat responses.
 
-Our starting segment is creators running recurring community challenges, maker sessions and tabletop campaigns. Self-hosting has a $0 software price; a proposed $12/month managed creator plan is a hypothesis to validate. There is no claimed paid checkout, customer traction or retention improvement. We measure actual command participation and plan creator pilots to learn whether the workflow earns repeat use.
+The sample scenario and live ingestion share one deterministic state engine. The runtime does not need an OpenAI API key or continuous transcription. Codex is the development collaborator, while the creator controls what reaches the stream.
 
-## Challenges and lessons
+## Challenges we ran into
 
-The hard part is keeping a live invitation trustworthy when the situation changes. Moderation, expiry and consistent state matter as much as the visual overlay. We also learned to narrow the idea after researching existing recap tools: repeating an established AI-summary feature would miss the more useful opportunity to help someone join the next moment.
+Live context becomes unreliable quickly if a finished choice remains on screen. We treated expiry, chapter versions, delayed events, and stale confirmations as core behavior. An old close dialog must not end a newer decision. A repeated delivery must not duplicate a contribution.
 
-## Verification and next steps
+Moving to Firebase also required a real platform migration. Rehosting the frontend alone would have left authentication and storage dependent on the previous environment. We replaced those dependencies, accounted for Firebase Hosting's session-cookie behavior, and separated public reads from private session storage. We also bounded and compressed private state to respect Firestore's document size limit.
 
-The implementation passes 59 engine/security tests and 15 local HTTP integration checks. Tests exercise signatures, replay protection, expiry, moderation boundaries and actual local D1 concurrency. Browser review verifies the rehearsal workflow. These checks do not establish live Twitch behavior. Record authentic OAuth connection, real chat commands and overlay updates; label any simulated raid explicitly. Future creator pilots will test maintenance burden and willingness to pay.
+## Accomplishments that we're proud of
 
-**Built with:** TypeScript, React, Twitch OAuth, Twitch EventSub, OBS browser source and OpenAI Codex. Cloudflare Workers, Cloudflare D1 and Sites-managed authentication.
+The strongest result is a small workflow with clear boundaries. A newcomer gets an exact next action. A creator retains editorial control. A community contribution can improve the brief without automatically becoming public stream copy.
+
+The implementation includes version checks, signed event verification, replay handling, owner isolation, encrypted authorization, public-data minimization, and session export/reset. The test suite covers failure cases as well as the intended path. The deployed test suite uses actual Firebase identities and Firestore transactions, while keeping signed fixtures distinct from real Twitch traffic.
+
+The current verification record is linked in the repository. Actual Twitch authorization, real channel traffic, and OBS capture must be checked separately; a simulated sample is not presented as proof of those external integrations.
+
+## What we learned
+
+Research showed that late-arrival summaries and capable chat bots already exist. A narrower participation handoff gave us a clearer product than another broad AI assistant.
+
+We also learned that lower model costs do not remove operational costs. Polling, storage, authentication, retries, and moderator effort still matter. Useful metrics need equally clear definitions: a command during a raid welcome is an observed action, not proof of retention.
+
+## What's next for Rallypoint
+
+We will test the workflow with creators who run recurring challenges and collaborative streams. The next questions are whether maintaining a brief saves effort, whether creators reuse it on another stream, and whether newcomers understand their next move faster.
+
+A proposed managed plan at $12 per month is a pricing hypothesis, not an implemented checkout or claimed revenue. Six creator interviews and three pilots will test demand before expanding into team moderation or additional premium features. The immediate release gate is authentic Twitch authorization, real commands, and OBS footage using the current Firebase deployment.

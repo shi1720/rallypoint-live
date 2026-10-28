@@ -10,11 +10,12 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { RallyState } from "@/lib/rally/types";
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <a href="/" className="brand" aria-label="Rallypoint home">
+    <Link href="/" className="brand" aria-label="Rallypoint home">
       <span className="brand-mark" aria-hidden="true">
         <i />
         <i />
@@ -26,7 +27,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
           rallypoint<span className="brand-period">.</span>
         </span>
       )}
-    </a>
+    </Link>
   );
 }
 export function TwitchGlyph() {
@@ -53,7 +54,7 @@ export function Badge({
   return <span className={`badge badge-${kind}`}>{children}</span>;
 }
 export function useNow() {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -277,11 +278,13 @@ export function BriefCard({
   compact = false,
   overlay = false,
   paused = false,
+  pauseReason,
 }: {
   state: RallyState;
   compact?: boolean;
   overlay?: boolean;
   paused?: boolean;
+  pauseReason?: string;
 }) {
   const now = useNow(),
     active = !paused && activeBrief(state, now),
@@ -304,7 +307,9 @@ export function BriefCard({
         <span className="eyebrow">
           <span className={active ? "live-dot" : "dim-dot"} />
           {paused
-            ? "AWAITING FRESH CONTEXT"
+            ? pauseReason
+              ? "CHAT CONNECTION PAUSED"
+              : "AWAITING FRESH CONTEXT"
             : active
               ? "YOUR WAY IN"
               : "BETWEEN CHAPTERS"}
@@ -355,7 +360,8 @@ export function BriefCard({
           <Clock3 size={16} />
           <p>
             {paused
-              ? "Waiting for a fresh brief. Participation commands are temporarily hidden."
+              ? pauseReason ||
+                "Waiting for a fresh brief. Participation commands are temporarily hidden."
               : state.brief.status === "closed"
                 ? "This chapter is complete. The next mission is on its way."
                 : state.brief.status === "live"

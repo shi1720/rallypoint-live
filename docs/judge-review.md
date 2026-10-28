@@ -1,32 +1,70 @@
-# Provisional judging review
+# Independent release and judging review
 
-Review date: October 28, 2026. Perspective: a skeptical hackathon judge evaluating the concept, authored materials and current source. This is an internal review, not a prediction of official scores. Automated test files were inspected, but this review does not claim their execution succeeded. All six rendered pitch slides were inspected individually. Browser UI inspection and authentic Twitch footage remain outside this review's evidence.
+Review date: October 28, 2026. This review covers the Firebase migration working tree after the final chat-readiness and command-length fixes. Scores assess the evidence available at this checkpoint and do not predict an award.
 
-## Scores
+## Evidence reviewed
 
-| Equally weighted criterion   | Score / 10  | Reason                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Innovation / idea            | **6**       | The focused combination of approved context, an expiring action and community proposals is coherent. Catch-up, polls, overlays and raid automation already exist, including native Twitch summaries. The workflow needs a vivid demonstration to feel substantially different from a polished bot-plus-poll.                                                                                                               |
-| Potential impact             | **6**       | The newcomer problem is easy to understand and the narrow challenge/maker/tabletop segment makes sense. No creator interviews or repeat-use evidence establish that this saves more work than maintaining commands manually. Creator maintenance is the principal adoption risk.                                                                                                                                           |
-| Technological implementation | **7**       | Source shows a real state machine, persistence, protected creator actions, encrypted authorization, signed webhook ingress, duplicate handling, concurrency checks and public projections. Tests cover meaningful failure cases. Genuine OAuth, Twitch event delivery, chat replies and deployed OBS behavior remain unverified here. Until shown, the entry's basic Twitch eligibility is not established by this review. |
-| Design                       | **7**       | The six-slide pitch is readable and consistent, with accurate commercial/live-validation disclosures. Source includes clear rehearsal labeling, creator review, exact commands and actionable empty states. Actual browser interaction and small-screen behavior still need inspection. A creator must currently fill several fields before delivering value.                                                              |
-| **Total**                    | **26 / 40** | **6.5 / 10 average. Credible foundation, insufficient evidence yet for a winning claim.**                                                                                                                                                                                                                                                                                                                                  |
+- Executed the full local suite: **98 tests passed, zero failures**. Executed `npm run typecheck`: passed. The retained tests cover the state engine, authentication helpers, storage boundaries, signed webhook routing, Twitch authorization, reply delivery, and public readiness.
+- Inspected the current Next.js routes, Firebase authentication/session exchange, Firestore storage and public projection, OAuth state binding, Twitch adapter, durable queue, deployment configuration, frontend state handling, and project materials.
+- Inspected the retained desktop rehearsal screenshot. It supports the assessment of visual hierarchy and product presentation. It is not proof of the final hosted mobile layout or authentic Twitch activity.
+- The release coordinator reported **29 actual hosted checks passed** at an earlier Firebase checkpoint and expanded the deployed suite afterward. Those results are reported evidence, not a suite independently rerun by this reviewer. The final source changed after that checkpoint, so the final deployment must rerun and record its own results.
+- Local Firestore tests use an in-memory boundary around actual application modules. They check application transaction behavior and rollback. They do not prove the provider's contention/retry behavior. The deployed suite includes an actual competing-publisher transaction check.
 
-## Three highest-leverage changes feasible today
+## Rubric scores
 
-1. **Prove the real integration in one continuous sequence.** Connect an authorized Twitch account. Publish a brief, type real `!catchup` and `!join A`, show the reply/count/OBS update, reject a real `!pitch`, then close the action. Save the exact tested deployment/version and record the flow for the submission. A simulated raid can stay visibly simulated. This resolves the largest eligibility and implementation uncertainty.
-2. **Reduce the creator's first-brief burden.** Add a small set of editable starting templates for the chosen segment, or a simple copy-from-last-brief action that preserves context while changing the decision. Keep publication explicit and expiry visible. During pitch editing, preserve the current context alongside the proposed update so adopting a suggestion does not accidentally discard the story. Success is a creator reaching a correct first brief quickly, not merely adding another feature.
-3. **Make the differentiation visible through one completed story.** Show Bubbles's rescue as a coherent sequence: arrive confused, understand the stakes, choose a route, contribute useful context, publish the next chapter, close the old invitation. Use actual screenshots and product footage rather than spending more time on abstract slides. Explain what the newcomer can do and why the creator trusts the invitation. Keep the commercial promise narrow and replace placeholders with verified links and results.
+| Criterion | Score / 10 | Assessment |
+| --- | ---: | --- |
+| Innovation / idea | **7** | The participation handoff is clear: approved context, one current action, private community suggestions, and an explicit end. The editorial workflow and version consistency are more distinctive than a summary alone. Polls, context commands, overlays, and raid automation already have strong substitutes. The demo must show the full handoff to make the difference visible. |
+| Potential impact | **6.5** | A newcomer joining a shared challenge is a relatable problem, and maker streams or tabletop campaigns form a sensible initial segment. Creator upkeep remains an adoption risk. There are no completed interviews, repeat-use pilots, customers, or measured outcomes establishing demand. |
+| Technological implementation | **7.5** | The migration is substantive: verified Firebase identities, private ownership, compressed bounded storage, sanitized public snapshots, signed events, transactional receipts/outbox, durable dispatch, refresh concurrency, and guarded destructive actions. Failure tests are meaningful. Actual broadcaster OAuth, real Twitch replies, and an actual OBS capture remain unverified. |
+| Design | **8** | The retained desktop presentation has a coherent identity, clear primary action, readable decision state, and useful simulation labels. Source includes templates, empty states, native dialogs, accessible labels, copy fallback, stale-state handling, and a distinct real workspace. Final hosted desktop/mobile review and authentic footage must support this provisional score. |
+| **Total** | **29 / 40** | **7.25 / 10 average. A credible, focused product with strong engineering progress. The remaining evidence gap is more important than adding features.** |
 
-Do not expand into transcription, autonomous summaries, new LLM features, payment processing or speculative raid attribution before those steps. They add cost and failure paths without resolving the present judging gaps.
+## Highest-priority remaining work
 
-## Small fixes with clear evidence
+### P1: establish authentic Twitch behavior
 
-- The engine prepends activity, while the studio's “LATEST FIRST” feed uses `state.activity.slice(-6).reverse()`. This selects the oldest retained entries. Use the first six in their existing order so the latest live interaction appears immediately.
-- The landing CTA “Try the live desk” points to `/demo`. “Try rehearsal” describes the destination accurately before the visitor reaches its simulation banner.
-- Keep “Use in next brief” as a separate publication step after acceptance. The current engine correctly treats acceptance as editorial review, not permission to publish arbitrary chat.
-- Keep the raid-window caveat. A command during a welcome is an observed action, not evidence that its author arrived with the raid.
+A working Firebase workspace and a signed fixture do not demonstrate real Twitch authorization or replies. Configure the confidential Twitch application, authorize a broadcaster account, and preserve one readable sequence: publish a brief, send real `!catchup`, cast a real `!join A`, submit and review a real `!pitch`, publish the revision, then close the chapter. Show the actual OBS Browser Source receiving the change. Record which release and channel were tested.
 
-## Pitch deck inspection
+A genuine raid is useful when available. Any simulated raid must remain visibly and verbally identified. Until authentic behavior is observed, keep the explicit live-verification limits in the story, testing instructions, and final handoff. Do not present rehearsal or signed test traffic as a live-channel success.
 
-Six slides, no visible clipping or unintended overlap in the rendered PNGs. Strong headline hierarchy and readable graphite/ivory/lime palette. Commercial hypotheses and pending live validation appear on the slides where they affect the claims. No synthetic product screenshot appears. Add an actual screenshot only if it materially replaces abstract explanation and remains legible.
+### P1: verify and reconcile the final release
+
+Deploy the frozen source containing the latest readiness and command-budget fixes. Rerun the real hosted authentication, owner-isolation, public-projection, transaction, and session-control checks against that release. Confirm no shared HTML caching exposes authenticated content or serves obsolete assets. Record the actual revision, URL, build result, dependency audit, browser sizes, and final test counts in `docs/verification.md` and the release checklist.
+
+Keep Devpost fields, the public video, captions, and repository instructions aligned with the same product behavior. The retained recording script contains em dashes in its heading and a simulation caption. Replace them before reuse because the requested final copy must contain none. A finished public YouTube URL, an under-three-minute video, and a saved draft or completed submission are separate facts and should be verified separately.
+
+### P2: test the commercial workflow before charging
+
+The proposed $12/month plan is a reasonable experiment, not established willingness to pay. Templates reduce first-use effort, but someone still has to maintain accurate context during a stream. Run the existing six-interview and three-pilot plan. Measure setup time, ordinary update time, voluntary reuse on another stream, and whether a newcomer can identify the next action without explanation. Do not substitute page opens or raid-window actions for retention or causal impact.
+
+### P2: bound public traffic and measure costs before wider rollout
+
+Viewer pages poll approximately every three seconds, and new page-open identifiers cause Firestore writes through the private room. The public visitor key is intentionally spoofable. Same-origin checks prevent ordinary browser cross-origin writes but do not stop an automated client that supplies its own Origin header. The current Cloud Run instance bound helps constrain capacity; it does not establish a monthly cost ceiling or prevent analytics abuse.
+
+Before wider launch, add and test suitable abuse controls, observe errors and infrastructure usage, and measure contention on a busy room. Avoid an unlimited plan until measured costs support it. The business plan's illustrative 100-channel scenario implies up to 96 million public refresh requests per month. Zero model spend does not establish healthy margins for that traffic. Larger channels need measured fanout, polling, and contention behavior.
+
+### P2: complete operational ownership for a paid service
+
+The source and privacy notes accurately describe bounded sessions, export/reset, and encrypted authorization. Account deletion, backup/restore exercises, incident visibility, support ownership, and demonstrated large-channel capacity remain launch work. Do not promise those capabilities or an uptime commitment before implementing and testing them.
+
+## Defects found and corrected during this audit
+
+| Finding | Resolution and retained evidence |
+| --- | --- |
+| A published brief could advertise commands with no usable Twitch connection. Missing readiness also enabled commands on older public snapshots. | Public readiness now defaults closed, requires explicit true in the viewer, follows verification and disconnect, and checks the current authorization before enabling. Four retained Twitch readiness regressions cover the main paths. |
+| A revoked token refresh inside background reply delivery could leave a public invitation enabled while the desk was closed. | A CAS-confirmed revocation now pauses the matching public connection. Authorization and status guards prevent an old failure from pausing a newer connection. Retained tests cover background revocation, transient retry, pending setup, and reconnect races. |
+| A maximum-size catchup response could truncate the fourth eight-character choice ID into an unusable command. | The engine reserves every complete command before shortening background text. The retained maximum-size regression extracts all four commands and successfully casts a vote with each. The reply remains within 480 characters. |
+| A fresh bootstrap generated the encryption secret as hex despite the AES helper requiring base64-encoded 32-byte material. The example environment repeated that instruction. | The coordinator corrected bootstrap generation and separated the example commands. The coordinator privately verified that the existing deployed secret decodes to 32 bytes; no secret was exposed in this review. |
+
+Delivery warnings intentionally remain distinct from authorization failure. A transient provider outage preserves authorization for a safe pre-send retry. An ambiguous chat-send result is not automatically repeated. These boundaries should stay visible in the implementation and documentation.
+
+## Positioning and presentation
+
+Lead with one sentence: **A newcomer gets the current goal and one clear way to join in, without the streamer repeating the setup.** Then demonstrate that sentence. The strongest product moment is useful community context becoming an approved next chapter while an old invitation ends correctly.
+
+The commercial moat is currently modest. Native features and configurable bots remain substitutes. Dependable operation, low maintenance, a narrow creator workflow, and repeated use can become advantages; none is established by an invented market statistic or an added model call. Keep the source's deterministic runtime and creator control explicit. Give Shivam Gupta accurate credit for product direction, scope, commercial constraints, and review priorities, and describe Codex's implementation and testing contributions honestly.
+
+## Recommended release decision
+
+Continue with final Firebase verification, authentic Twitch authorization, OBS proof, and the corresponding submission media. Keep the wider commercial launch gated on real use and operational evidence. The next improvement in judging confidence should come from a complete, truthful product demonstration and creator reuse, rather than additional speculative features.

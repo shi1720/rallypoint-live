@@ -35,6 +35,9 @@ export function writeDemo(state: RallyState) {
 const disconnected: Connection = { configured: false, connected: false };
 export function useRally(demo: boolean) {
   const [state, setState] = useState<RallyState | null>(null),
+    [user, setUser] = useState<{ name: string; isAnonymous?: boolean } | null>(
+      null,
+    ),
     [connection, setConnection] = useState<Connection>(disconnected),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -44,8 +47,12 @@ export function useRally(demo: boolean) {
     [overlayUrl, setOverlayUrl] = useState("");
   const stateRef = useRef<RallyState | null>(null),
     connectionCheck = useRef<Connection | null>(null);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const receive = useCallback((data: RoomResponse) => {
+    setAuthRequired(false);
+    setUser(data.user);
     setState((old) =>
       old && old.revision > data.state.revision ? old : data.state,
     );
@@ -63,9 +70,14 @@ export function useRally(demo: boolean) {
   }, []);
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/room", { cache: "no-store" });
+      const response = await fetch("/api/room", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(12000),
+      });
       if (response.status === 401) {
         setAuthRequired(true);
+        setState(null);
+        setUser(null);
         return;
       }
       const data = (await response.json()) as RoomResponse & {
@@ -89,6 +101,8 @@ export function useRally(demo: boolean) {
       try {
         writeDemo(initial);
       } catch {
+        // Hydrate browser storage after mount while preserving server markup.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setError(
           "Browser storage is unavailable. Your rehearsal will last for this tab.",
         );
@@ -104,9 +118,17 @@ export function useRally(demo: boolean) {
         window.removeEventListener("rallypoint-demo", sync);
       };
     }
-    refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      await refresh();
+      if (!stopped) timer = setTimeout(load, 5000);
+    };
+    load();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [demo, refresh]);
   useEffect(() => {
     if (demo || !connection.broadcasterId) return;
@@ -158,6 +180,7 @@ export function useRally(demo: boolean) {
         if (demo) {
           const current = stateRef.current || readDemo();
           const result = transition(current, action);
+          stateRef.current = result.state;
           setState(result.state);
           try {
             writeDemo(result.state);
@@ -170,7 +193,13 @@ export function useRally(demo: boolean) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(action),
+          signal: AbortSignal.timeout(15000),
         });
+        if (response.status === 401) {
+          setAuthRequired(true);
+          setState(null);
+          setUser(null);
+        }
         const data = (await response.json()) as RoomResponse & {
           error?: string;
           reply?: string;
@@ -193,6 +222,7 @@ export function useRally(demo: boolean) {
   const reset = useCallback(() => {
     if (!demo) return;
     const fresh = createDemoState();
+    stateRef.current = fresh;
     setState(fresh);
     try {
       writeDemo(fresh);
@@ -200,6 +230,7 @@ export function useRally(demo: boolean) {
   }, [demo]);
   return {
     state,
+    user,
     connection,
     loading,
     busy,

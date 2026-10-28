@@ -1,49 +1,42 @@
-# Submission readiness
+# Release and submission checklist
 
-Use this as a release gate. An unchecked item is unresolved; this checklist does not certify eligibility, deployment or test success.
+An unchecked item is unresolved. This checklist does not certify eligibility, a completed deployment, or a live Twitch test.
 
-## Required submission
+## Application release
 
-- [ ] Shivam personally verifies eligibility, residence and conflicts under the [official rules](https://twitchcon-codex.devpost.com/rules).
-- [ ] Join the hackathon and complete all Devpost fields by **November 3, 2026, 3:30 a.m. IST**.
-- [x] Supply an accessible repository with source, assets and runnable instructions; grant the specified judging access if private.
-- [x] Prepare a project description and main Codex build session ID. Confirm /status at final entry.
-- [ ] Upload a public YouTube demo under three minutes, showing the project on Twitch and its Codex development.
-- [ ] Keep free, unrestricted judging access available through November 15.
-- [ ] Confirm required English materials, asset rights and accurate authorship claims.
+- [ ] Verify the exact release at https://rallypoint-desk.web.app while signed out.
+- [ ] Verify the sample scenario is labeled as simulated.
+- [ ] Verify real guest and email/password sessions, owner isolation, sign-out, and guest upgrade.
+- [ ] Verify publish/edit/close, stale confirmations, export, and real session reset.
+- [ ] Verify viewer and overlay freshness behavior, including disconnected Twitch readiness.
+- [ ] Run the current domain/security/storage checks, TypeScript, build, dependency audit, and deployed operator suite.
+- [ ] Record the exact revision, test results, CI status, and browser review evidence in `docs/verification.md`.
+- [ ] Confirm responsive layout and accessible dialog/form controls at desktop and phone widths.
+- [ ] Confirm deployment secrets are excluded from source and build context.
 
-## Real Twitch proof — USER ACTION NEEDED until observed
+## Real Twitch proof
 
-- [ ] Register or select the Twitch app, configure the exact deployment callback and provide server-side credentials.
-- [ ] Complete Twitch OAuth consent using Shivam's authorized account.
-- [ ] Verify real `!catchup`, `!pitch` and `!join A/B` behavior in Twitch chat.
-- [ ] Verify a published change reaches the public page and the actual OBS browser source.
-- [ ] Verify moderation rejection never publishes the rejected proposal.
-- [ ] Verify a closed/expired brief no longer accepts participation.
-- [ ] Record a genuine incoming raid, or label its demonstration as simulated throughout.
-- [ ] Confirm no rehearsal fixture is presented as live Twitch traffic.
+- [ ] Configure the confidential Twitch app with `https://rallypoint-desk.web.app/api/twitch/callback`.
+- [ ] Authorize the broadcaster and verify enabled chat and incoming raid subscriptions.
+- [ ] Exercise real `!catchup`, `!join A/B`, and `!pitch` commands and observe actual replies/state updates.
+- [ ] Verify review rejection never publishes private text, and accepting still requires explicit publication.
+- [ ] Verify the actual OBS Browser Source updates and has a transparent background.
+- [ ] Verify close/expiry ends the old participation action across all surfaces.
+- [ ] Record a genuine raid or keep its simulation visibly and verbally disclosed.
 
-Twitch app registration requires a verified account and 2FA; see [Twitch's registration instructions](https://dev.twitch.tv/docs/authentication/register-app/). Keep the client secret confidential. The running app's connection/settings screen and README are authoritative for the final callback and environment-variable names.
+## Entry materials
 
-## Release evidence — USER ACTION NEEDED until report exists
+- [ ] Shivam personally verifies age, residence, conflicts, and eligibility under the [official rules](https://twitchcon-codex.devpost.com/rules).
+- [ ] Review the Project Story in `docs/devpost-submission.md` and the actual current feature set.
+- [ ] Provide the public source repository: https://github.com/shi1720/rallypoint-live.
+- [ ] Provide tester instructions and keep free judging access available through the judging period.
+- [ ] Verify the main Codex build session ID before entering it.
+- [ ] Upload and verify a public YouTube video under three minutes with legible authentic functionality and a concise Codex development segment.
+- [ ] Complete personal survey fields and any required declarations honestly.
+- [ ] Review all saved Devpost fields and submit before **November 3, 2026 at 3:30 a.m. India time**.
 
-- [x] Run the repository's documented automated checks and production build; save actual results.
-- [ ] Inspect error paths, duplicate events, expired actions, authorization and tenant separation using the final implementation.
-- [x] Confirm locally that EventSub authenticates messages and handles redelivery; compare with [Twitch's webhook guidance](https://dev.twitch.tv/docs/eventsub/handling-webhook-events/).
-- [ ] Test the final deployed version, signed-out public access and narrow-screen readability.
-- [ ] Replace all `USER ACTION NEEDED` fields in the copied Devpost submission with verified facts/links.
-- [ ] Ensure the README and final submission distinguish simulated verification from live verification.
-- [ ] Keep pricing, traction and test claims within the evidence. There is no implemented paid checkout or validated retention lift asserted here.
+## Draft location
 
-## Final links
+https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions/1268954/project-overview
 
-| Item                           | Value                                                                             |
-| ------------------------------ | --------------------------------------------------------------------------------- |
-| Code repository                | https://github.com/shi1720/rallypoint-live                                        |
-| Deployed project / judge entry | https://rallypoint-live-shivam.sg127977958.chatgpt.site (initially owner-private) |
-| Public viewer page             | USER ACTION NEEDED                                                                |
-| Public YouTube video           | USER ACTION NEEDED                                                                |
-| Codex session ID               | 01a181e2-464a-7302-821d-a300d09b283c                                              |
-| Final verification report      | docs/verification.md                                                              |
-
-The rules' four criteria are equally weighted: innovation, potential impact, implementation and design. Review each against what the final recording actually demonstrates. No score predicts an award.
+The four criteria are equally weighted: innovation, potential impact, implementation, and design. A private review score does not predict an award. Source fixtures, browser screenshots, and a real Twitch recording establish different things and must remain clearly identified.

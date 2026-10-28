@@ -2,7 +2,7 @@
 
 Creator: Shivam Gupta. Main build chat: `01a181e2-464a-7302-821d-a300d09b283c` (verified in Codex's browser/session context). Confirm with `/status` before submitting if the app presents a different session identifier.
 
-Built on October 28, 2026, within the published hackathon window. Shivam supplied the brief, asked for autonomous implementation, emphasized real commercial usefulness, free-first operation and polished deliverables, and authorized repository creation. Codex implemented research, design, state logic, frontend, backend, tests and documentation in this chat. Supporting agents researched competitors, wrote and audited the state/security logic, implemented the interface, and reviewed the proposal against the rubric.
+Built on October 28, 2026. Shivam supplied the brief, asked for autonomous implementation, emphasized real commercial usefulness, free-first operation and polished deliverables, and authorized repository creation. Codex implemented research, design, state logic, frontend, backend, tests and documentation in this chat. Supporting agents researched competitors, wrote and audited the state/security logic, implemented the interface, and reviewed the proposal against the rubric.
 
 ## Decisions with evidence
 
@@ -18,3 +18,21 @@ Built on October 28, 2026, within the published hackathon window. Shivam supplie
 ## Evidence for the video
 
 Show this chat's product decision and test run, then the actual corresponding source files. Keep secrets and private browser content out of the recording. The verification report distinguishes unit/mocked tests, actual local HTTP checks, browser review and real Twitch validation. Use that distinction in the Devpost write-up. A recording of simulated chat must never be presented as a live Twitch test.
+
+## Firebase release migration
+
+The later release request explicitly selected a clean Firebase URL, full product testing, and production-style presentation. The primary application URL is now `https://rallypoint-desk.web.app`. The backing project is `granted-ai-2026`, with an isolated named Firestore database, a dedicated Cloud Run service, Firebase Authentication, and Cloud Tasks.
+
+The migration removed the previous Cloudflare runtime and Sites identity-header helper. Firebase verifies real anonymous or email/password identities and creates HTTP-only app sessions. The frontend adds guest upgrade, sign-out, first-run onboarding, export-first reset, and stale confirmation protection. Public page-open tracking uses a random browser identifier because Firebase Hosting forwards only the designated session cookie to the dynamic backend.
+
+The application continues to use the same deterministic domain engine. Storage now compresses and bounds private session state while keeping a separate public snapshot. The new deployed suite uses real Firebase sessions and Firestore transactions, with isolated signed event fixtures and cleanup. Those fixtures remain explicitly distinct from real Twitch account authorization and real chat delivery.
+
+The requested public story uses the headings in `docs/devpost-submission.md`. The product UI and demo narrative avoid hackathon branding. Shivam's direction and review goals remain credited accurately; no human implementation work, creator interviews, paying users, or live Twitch proof have been invented.
+
+## Firebase release verification
+
+The release replaced the previous platform-specific authentication and D1 storage with native Next.js, Firebase Authentication, named Firestore storage, Cloud Run and Cloud Tasks. Firebase Hosting provides https://rallypoint-desk.web.app. The server verifies Firebase sessions rather than accepting caller-supplied identity headers.
+
+The current local suite passes 99 tests. Hosted checks use actual Firebase guest and email/password identities, owner-isolated Firestore transactions, secure sessions, public snapshots, and Cloud Tasks invoking the worker. Signed Twitch-shaped fixtures exercise the webhook and replay boundaries. These fixtures do not establish real broadcaster OAuth, chat delivery, or Twitch-stream evidence.
+
+Independent review found and fixed stale command invitations, background token revocation, guest sign-out access loss, oversized storage, command truncation and a queue IAM configuration issue. The final deployment is verified separately in docs/verification.md.

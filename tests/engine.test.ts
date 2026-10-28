@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore Node's built-in type stripping requires explicit TypeScript file extensions.
 import {
   createState,
   createDemoState,
@@ -76,6 +75,40 @@ test("stale editor versions cannot overwrite a newer chapter", () => {
   assert.throws(
     () =>
       apply(live(), { type: "publish", brief: brief(), expectedVersion: 0 }),
+    /another tab/,
+  );
+});
+
+test("a stale close confirmation cannot close a newer chapter", () => {
+  const first = live();
+  const second = apply(
+    first,
+    {
+      type: "publish",
+      brief: { ...brief(), title: "The next chapter" },
+      expectedVersion: 1,
+    },
+    10,
+  ).state;
+  assert.throws(
+    () =>
+      apply(
+        second,
+        { type: "close", expectedVersion: first.brief.version },
+        11,
+      ),
+    /changed in another tab/,
+  );
+  assert.equal(second.brief.status, "live");
+  assert.equal(second.brief.version, 2);
+  const closed = apply(second, { type: "close", expectedVersion: 2 }, 11);
+  assert.equal(closed.state.brief.status, "closed");
+  assert.equal(
+    apply(closed.state, { type: "close", expectedVersion: 2 }, 12).changed,
+    false,
+  );
+  assert.throws(
+    () => apply(second, { type: "close", expectedVersion: 2.5 }),
     /another tab/,
   );
 });
@@ -319,6 +352,37 @@ test("catchup fits Twitch limits and includes only published content and exact c
   assert.ok(apply(result.state, chat("c3", "u1", "!catchup"), 15).reply);
 });
 
+test("catchup preserves four executable maximum-length choice IDs under its message cap", () => {
+  const ids = ["CHOICE01", "CHOICE02", "CHOICE03", "CHOICE04"];
+  const maximum = {
+    ...brief(),
+    title: "T".repeat(100),
+    context: "C".repeat(280),
+    stakes: "S".repeat(180),
+    action: "A".repeat(140),
+    choices: ids.map((id) => ({ id, label: "L".repeat(70) })),
+  };
+  const state = apply(empty(), { type: "publish", brief: maximum }).state;
+  const result = apply(state, chat("catchup-max", "new-arrival", "!catchup"));
+  assert.ok(result.reply && result.reply.length <= 480);
+  const commands = [...result.reply.matchAll(/!join ([A-Z0-9]+):/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(commands, ids);
+  let participating = result.state;
+  for (const [index, id] of commands.entries()) {
+    participating = apply(
+      participating,
+      chat(`vote-${index}`, `viewer-${index}`, `!join ${id}`),
+      index + 1,
+    ).state;
+  }
+  assert.deepEqual(
+    participating.contributions.map((vote) => vote.choiceId),
+    ids,
+  );
+});
+
 test("raid events are deduplicated and measure contributions only in the welcome window", () => {
   const raid = {
     type: "raid",
@@ -415,6 +479,34 @@ test("reset is isolated to its workspace and preserves owner-facing identity", (
   assert.equal(reset.revision, state.revision + 1);
   assert.equal(state.contributions.length, 1);
   assert.equal(reset.brief.status, "draft");
+});
+
+test("a stale reset cannot discard contributions that arrived after confirmation opened", () => {
+  const confirmationState = live();
+  const updated = apply(confirmationState, chat(), 1).state;
+  assert.throws(
+    () =>
+      apply(
+        updated,
+        { type: "reset", expectedRevision: confirmationState.revision },
+        2,
+      ),
+    /session changed in another tab/,
+  );
+  assert.equal(updated.contributions.length, 1);
+  assert.throws(
+    () => apply(updated, { type: "reset", expectedRevision: 1.5 }, 2),
+    /another tab/,
+  );
+  const reset = apply(
+    updated,
+    { type: "reset", expectedRevision: updated.revision },
+    2,
+  ).state;
+  assert.equal(reset.contributions.length, 0);
+  assert.equal(reset.brief.status, "draft");
+  assert.equal(reset.revision, updated.revision + 1);
+  assert.equal(reset.publicId, updated.publicId);
 });
 
 test("settings validate Twitch channel names and trim control characters", () => {

@@ -1,12 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   ArrowUpRight,
-  Check,
   Clock3,
   LoaderCircle,
-  MessageSquare,
   Monitor,
   Radio,
   RefreshCw,
@@ -38,6 +37,8 @@ function usePublicState(id: string, overlay: boolean) {
     let latestRevision = -1;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
+    // Clear the previous room while hydrating its browser-backed subscription.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setState(null);
     setError("");
@@ -103,12 +104,22 @@ function usePublicState(id: string, overlay: boolean) {
       }
     };
     load();
-    if (!overlay)
+    if (!overlay) {
+      let visitorKey = crypto.randomUUID();
+      try {
+        const saved = localStorage.getItem("rallypoint.viewer-id");
+        if (saved && /^[A-Za-z0-9_-]{12,100}$/.test(saved)) visitorKey = saved;
+        else localStorage.setItem("rallypoint.viewer-id", visitorKey);
+      } catch {
+        /* Opens remain approximate when browser storage is unavailable. */
+      }
       fetch(`/api/public/${encodeURIComponent(id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "open" }),
+        body: JSON.stringify({ visitorKey }),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]),
       }).catch(() => {});
+    }
     return () => {
       stopped = true;
       controller.abort();
@@ -131,8 +142,13 @@ export function Viewer({
     now = useNow();
   const fresh =
     demo || (!error && lastSuccessAt > 0 && now - lastSuccessAt <= 10000);
+  const chatReady = demo || state?.chatReady === true;
+  const connectionPaused = !chatReady && !!state && activeBrief(state, now);
+  const pauseReason = connectionPaused
+    ? "Twitch chat is not connected yet. Participation commands will appear when this channel is ready."
+    : undefined;
   const metrics = state ? currentMetrics(state) : null,
-    active = state ? fresh && activeBrief(state, now) : false;
+    active = state ? fresh && chatReady && activeBrief(state, now) : false;
   const raid = fresh
     ? state?.raids.find((r) => new Date(r.welcomeUntil).getTime() > now)
     : undefined;
@@ -159,12 +175,24 @@ export function Viewer({
           <div className="overlay-position">
             <div className="overlay-channel">
               <Brand compact />
-              <span>{demo ? "REHEARSAL" : `@${state.channel}`}</span>
+              <span>
+                {demo
+                  ? "REHEARSAL"
+                  : state.channel
+                    ? `@${state.channel}`
+                    : "YOUR COMMUNITY"}
+              </span>
               <span className="overlay-channel-right">
                 YOUR WAY INTO THE STORY
               </span>
             </div>
-            <BriefCard state={state} compact overlay />
+            <BriefCard
+              state={state}
+              compact
+              overlay
+              paused={connectionPaused}
+              pauseReason={pauseReason}
+            />
           </div>
         ) : null}
       </main>
@@ -179,7 +207,9 @@ export function Viewer({
               ? "REHEARSAL BRIEF"
               : active
                 ? "CURRENT PARTICIPATION BRIEF"
-                : "BETWEEN CHAPTERS"}
+                : connectionPaused
+                  ? "CHAT CONNECTION PAUSED"
+                  : "BETWEEN CHAPTERS"}
           </Badge>
           <a href={demo ? "/demo" : "/"} className="viewer-about">
             {demo ? "Back to rehearsal" : "About Rallypoint"}{" "}
@@ -223,7 +253,9 @@ export function Viewer({
               <TwitchGlyph />{" "}
               {demo
                 ? "FICTIONAL CHANNEL"
-                : `LIVE CONTEXT FOR @${state.channel}`}
+                : state.channel
+                  ? `CONTEXT FOR @${state.channel}`
+                  : "YOUR COMMUNITY’S CURRENT BRIEF"}
             </div>
             <h1>
               {raid ? (
@@ -254,15 +286,21 @@ export function Viewer({
           )}
           <div className="viewer-grid">
             <div>
-              <BriefCard state={state} paused={!fresh} />
-              <div className="viewer-instructions">
-                <span className="step-circle">1</span>
-                <p>Read the brief.</p>
-                <span className="step-circle">2</span>
-                <p>Open Twitch chat.</p>
-                <span className="step-circle">3</span>
-                <p>Make your move.</p>
-              </div>
+              <BriefCard
+                state={state}
+                paused={!fresh || connectionPaused}
+                pauseReason={pauseReason}
+              />
+              {active && (
+                <div className="viewer-instructions">
+                  <span className="step-circle">1</span>
+                  <p>Read the brief.</p>
+                  <span className="step-circle">2</span>
+                  <p>Open Twitch chat.</p>
+                  <span className="step-circle">3</span>
+                  <p>Make your move.</p>
+                </div>
+              )}
             </div>
             <aside className="viewer-side">
               {demo &&
@@ -293,7 +331,9 @@ export function Viewer({
                 <p>
                   {active
                     ? "Your choice counts once. You can change it. No follow, subscription, or explanation required."
-                    : "The streamer is setting up the next chapter. You can still say hello and be part of the conversation."}
+                    : connectionPaused
+                      ? "The current brief is ready. Chat participation will open when the creator connects Twitch."
+                      : "The next chapter is being prepared. You can still say hello and be part of the conversation."}
                 </p>
                 {!demo && state.channel && (
                   <a
@@ -369,9 +409,10 @@ export function Viewer({
                     useful to add? Type <code>!pitch Your update</code> in
                     Twitch chat for review.
                   </>
-                ) : fresh ? (
+                ) : fresh && !connectionPaused ? (
                   "This chapter has ended. Wait for the creator to publish the next invitation."
                 ) : (
+                  pauseReason ||
                   "Live context could not be confirmed. Participation commands will reappear when a fresh brief arrives."
                 )}
               </p>
@@ -382,9 +423,9 @@ export function Viewer({
       <footer className="viewer-footer">
         <Brand />
         <span>Give every viewer a way in.</span>
-        <a href="/">
+        <Link href="/">
           Create your community’s Rallypoint <ArrowUpRight size={13} />
-        </a>
+        </Link>
       </footer>
     </main>
   );

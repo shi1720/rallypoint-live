@@ -1,6 +1,9 @@
-import type { Connection } from "../rally/types";
+import type { Connection, RallyState } from "../rally/types";
+import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 import { configured, runtime, siteOrigin } from "./env";
-import { decrypt, encrypt, HttpError } from "./security";
+import { decrypt, encrypt, HttpError, isRecord } from "./security";
+import { docId, store } from "./store";
+
 export const SCOPES = [
   "user:read:chat",
   "user:write:chat",
@@ -17,6 +20,9 @@ export type Integration = {
   status: string;
   error: string | null;
   updated_at: string;
+  authorization_id?: string;
+  delivery_error?: string | null;
+  refresh_lease?: { id: string; until: number } | null;
 };
 type Tokens = {
   access_token: string;
@@ -24,214 +30,487 @@ type Tokens = {
   expiresAt: number;
   validatedAt: number;
 };
+type Subscription = {
+  id: string;
+  type: string;
+  status: string;
+  condition: Record<string, unknown>;
+  transport: Record<string, unknown>;
+};
+type Outbound = {
+  owner_id: string;
+  reply: string;
+  parent_id?: string | null;
+  status: string;
+  created_at: string;
+  public_id?: string;
+  brief_version?: number;
+  brief_expires_at?: string;
+  expiresAt?: { toMillis(): number };
+};
+class TwitchRequestError extends HttpError {
+  upstreamStatus: number;
+  constructor(upstreamStatus: number) {
+    super(502, `Twitch request failed (${upstreamStatus}). Try again shortly.`);
+    this.upstreamStatus = upstreamStatus;
+  }
+}
+const integrationRef = (owner: string) =>
+  store().collection("integrations").doc(owner);
 let appCache: { token: string; expiresAt: number; client: string } | null =
   null;
-export async function integration(owner: string) {
-  return runtime()
-    .DB.prepare("SELECT * FROM integrations WHERE owner_id=?")
-    .bind(owner)
-    .first<Integration>();
+let appFlight: { client: string; promise: Promise<string> } | null = null;
+export async function integration(owner: string): Promise<Integration | null> {
+  const snapshot = await integrationRef(owner).get();
+  return snapshot.exists ? (snapshot.data() as Integration) : null;
 }
-export async function requestJson(url: string, init: RequestInit = {}) {
-  const response = await fetch(url, {
-    ...init,
-    signal: AbortSignal.timeout(7000),
-  });
-  let body: any;
+function stringList(value: string): string[] {
   try {
-    body = await response.json();
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
   } catch {
-    body = {};
+    return [];
   }
-  if (!response.ok)
+}
+function tokenResult(data: unknown, fallbackRefresh?: string): Tokens {
+  const response = isRecord(data) ? data : {};
+  const refreshToken = response.refresh_token ?? fallbackRefresh;
+  if (
+    typeof response.access_token !== "string" ||
+    !response.access_token ||
+    typeof refreshToken !== "string" ||
+    !refreshToken ||
+    typeof response.expires_in !== "number" ||
+    !Number.isFinite(response.expires_in) ||
+    response.expires_in <= 0
+  )
     throw new HttpError(
       502,
-      `Twitch request failed (${response.status}). Reconnect or try again.`,
+      "Twitch returned incomplete authorization data. Try connecting again.",
     );
-  return body;
-}
-export async function appToken() {
-  const e = runtime();
-  if (!configured()) throw new HttpError(503, "Twitch is not configured yet.");
-  if (
-    appCache &&
-    appCache.client === e.TWITCH_CLIENT_ID &&
-    appCache.expiresAt > Date.now()
-  )
-    return appCache.token;
-  const data = await requestJson("https://id.twitch.tv/oauth2/token", {
-    method: "POST",
-    body: new URLSearchParams({
-      client_id: e.TWITCH_CLIENT_ID!,
-      client_secret: e.TWITCH_CLIENT_SECRET!,
-      grant_type: "client_credentials",
-    }),
-  });
-  appCache = {
-    token: data.access_token,
-    client: e.TWITCH_CLIENT_ID!,
-    expiresAt: Date.now() + (data.expires_in - 120) * 1000,
+  return {
+    access_token: response.access_token,
+    refresh_token: refreshToken,
+    expiresAt: Date.now() + response.expires_in * 1000,
+    validatedAt: Date.now(),
   };
-  return data.access_token as string;
+}
+function isSubscription(value: unknown): value is Subscription {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.type === "string" &&
+    typeof value.status === "string" &&
+    isRecord(value.condition) &&
+    isRecord(value.transport)
+  );
+}
+function authorizationMatches(a: Integration, b: Integration): boolean {
+  return (
+    a.broadcaster_id === b.broadcaster_id &&
+    (a.authorization_id && b.authorization_id
+      ? a.authorization_id === b.authorization_id
+      : a.encrypted_tokens === b.encrypted_tokens)
+  );
+}
+function transient(error: unknown): boolean {
+  return error instanceof TwitchRequestError
+    ? error.upstreamStatus === 429 || error.upstreamStatus >= 500
+    : error instanceof HttpError && error.status >= 500;
+}
+export async function requestJson(
+  url: string,
+  init: RequestInit = {},
+): Promise<Record<string, unknown>> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(7000)])
+        : AbortSignal.timeout(7000),
+    });
+  } catch {
+    throw new HttpError(502, "Twitch could not be reached. Try again shortly.");
+  }
+  if (!response.ok) throw new TwitchRequestError(response.status);
+  try {
+    const body: unknown = await response.json();
+    if (!isRecord(body)) throw new Error("Expected a Twitch response object.");
+    return body;
+  } catch {
+    throw new HttpError(
+      502,
+      "Twitch returned an unreadable response. Try again shortly.",
+    );
+  }
+}
+export async function appToken(): Promise<string> {
+  const env = runtime();
+  if (!configured()) throw new HttpError(503, "Twitch is not configured yet.");
+  const client = env.TWITCH_CLIENT_ID!;
+  if (appCache?.client === client && appCache.expiresAt > Date.now())
+    return appCache.token;
+  if (appFlight?.client === client) return appFlight.promise;
+  const promise = (async () => {
+    const data = await requestJson("https://id.twitch.tv/oauth2/token", {
+      method: "POST",
+      body: new URLSearchParams({
+        client_id: client,
+        client_secret: env.TWITCH_CLIENT_SECRET!,
+        grant_type: "client_credentials",
+      }),
+    });
+    if (
+      typeof data?.access_token !== "string" ||
+      !data.access_token ||
+      typeof data.expires_in !== "number" ||
+      !Number.isFinite(data.expires_in) ||
+      data.expires_in <= 0
+    )
+      throw new HttpError(502, "Twitch returned an invalid app authorization.");
+    appCache = {
+      token: data.access_token,
+      client,
+      expiresAt: Date.now() + Math.max(1, data.expires_in - 120) * 1000,
+    };
+    return data.access_token;
+  })();
+  appFlight = { client, promise };
+  try {
+    return await promise;
+  } finally {
+    if (appFlight?.promise === promise) appFlight = null;
+  }
 }
 export async function helix(
   path: string,
   token: string,
   init: RequestInit = {},
-) {
+): Promise<Record<string, unknown>> {
+  const headers = new Headers(init.headers);
+  headers.set("Client-Id", runtime().TWITCH_CLIENT_ID!);
+  headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Content-Type", "application/json");
   return requestJson(`https://api.twitch.tv/helix/${path}`, {
     ...init,
-    headers: {
-      "Client-Id": runtime().TWITCH_CLIENT_ID!,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
+    headers,
   });
 }
 export async function saveAuthorization(
   owner: string,
   code: string,
   origin: string,
-) {
-  const e = runtime();
+): Promise<string> {
+  const env = runtime();
   const data = await requestJson("https://id.twitch.tv/oauth2/token", {
     method: "POST",
     body: new URLSearchParams({
-      client_id: e.TWITCH_CLIENT_ID!,
-      client_secret: e.TWITCH_CLIENT_SECRET!,
+      client_id: env.TWITCH_CLIENT_ID!,
+      client_secret: env.TWITCH_CLIENT_SECRET!,
       code,
       grant_type: "authorization_code",
       redirect_uri: `${origin}/api/twitch/callback`,
     }),
   });
+  const tokens = tokenResult(data);
   const verified = await requestJson("https://id.twitch.tv/oauth2/validate", {
-    headers: { Authorization: `OAuth ${data.access_token}` },
+    headers: { Authorization: `OAuth ${tokens.access_token}` },
   });
+  const { client_id: clientId, user_id: userId, login, scopes } = verified;
   if (
-    verified.client_id !== e.TWITCH_CLIENT_ID ||
-    !verified.user_id ||
-    SCOPES.some((scope) => !verified.scopes.includes(scope))
+    clientId !== env.TWITCH_CLIENT_ID ||
+    typeof userId !== "string" ||
+    !/^\d+$/.test(userId) ||
+    typeof login !== "string" ||
+    !/^[a-z0-9_]{2,25}$/.test(login) ||
+    !Array.isArray(scopes) ||
+    SCOPES.some((scope) => !scopes.includes(scope))
   )
     throw new HttpError(
       403,
-      "Twitch authorization is missing required permissions.",
+      "Twitch authorization is missing the required identity or permissions.",
     );
-  const tokens: Tokens = {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expiresAt: Date.now() + data.expires_in * 1000,
-    validatedAt: Date.now(),
-  };
-  const encrypted = await encrypt(tokens, e.TOKEN_ENCRYPTION_KEY!);
-  const previous = await integration(owner);
-  if (previous && previous.broadcaster_id !== verified.user_id)
-    throw new HttpError(
-      409,
-      "Disconnect the previous Twitch account before switching channels.",
-    );
-  const existing = await runtime()
-    .DB.prepare("SELECT owner_id FROM integrations WHERE broadcaster_id=?")
-    .bind(verified.user_id)
-    .first<{ owner_id: string }>();
-  if (existing && existing.owner_id !== owner)
-    throw new HttpError(
-      409,
-      "This Twitch channel is already linked to another Rallypoint studio.",
-    );
-  await e.DB.prepare(
-    "INSERT INTO integrations(owner_id,broadcaster_id,channel,encrypted_tokens,scopes,subscription_ids,status,error,updated_at) VALUES(?,?,?,?,?,'[]','connecting',NULL,?) ON CONFLICT(owner_id) DO UPDATE SET broadcaster_id=excluded.broadcaster_id,channel=excluded.channel,encrypted_tokens=excluded.encrypted_tokens,scopes=excluded.scopes,status='connecting',error=NULL,updated_at=excluded.updated_at",
-  )
-    .bind(
-      owner,
-      verified.user_id,
-      verified.login,
-      encrypted,
-      JSON.stringify(verified.scopes),
-      new Date().toISOString(),
-    )
-    .run();
-  return verified.login as string;
+  const encrypted = await encrypt(tokens, env.TOKEN_ENCRYPTION_KEY!);
+  const ref = integrationRef(owner),
+    channelRef = store().collection("channels").doc(docId(userId));
+  const saved = await store().runTransaction(async (tx) => {
+    const [previousSnapshot, channelSnapshot] = await Promise.all([
+      tx.get(ref),
+      tx.get(channelRef),
+    ]);
+    const previous = previousSnapshot.exists
+      ? (previousSnapshot.data() as Integration)
+      : null;
+    if (previous?.status === "disconnecting")
+      throw new HttpError(
+        409,
+        "Twitch is disconnecting. Try connecting again in a moment.",
+      );
+    if (previous && previous.broadcaster_id !== userId)
+      throw new HttpError(
+        409,
+        "Disconnect the previous Twitch account before switching channels.",
+      );
+    if (channelSnapshot.exists && channelSnapshot.data()?.owner_id !== owner)
+      throw new HttpError(
+        409,
+        "This Twitch channel is already linked to another Rallypoint studio.",
+      );
+    const authorization: Integration = {
+      owner_id: owner,
+      broadcaster_id: userId,
+      channel: login,
+      encrypted_tokens: encrypted,
+      scopes: JSON.stringify(scopes),
+      subscription_ids: previous?.subscription_ids ?? "[]",
+      status: "connecting",
+      error: null,
+      delivery_error: null,
+      refresh_lease: null,
+      authorization_id: crypto.randomUUID(),
+      updated_at: new Date().toISOString(),
+    };
+    tx.set(ref, authorization);
+    tx.set(channelRef, { owner_id: owner, broadcaster_id: userId });
+    return authorization;
+  });
+  await syncPublicConnection(owner, false, saved);
+  return login;
 }
-export async function userToken(row: Integration): Promise<string> {
-  const e = runtime();
-  const stored = await decrypt<Tokens>(
-    row.encrypted_tokens,
-    e.TOKEN_ENCRYPTION_KEY!,
-  );
-  if (
-    stored.expiresAt > Date.now() + 120000 &&
-    stored.validatedAt > Date.now() - 3600000
-  )
-    return stored.access_token;
-  if (stored.expiresAt > Date.now() + 120000) {
-    try {
-      const checked = await requestJson(
-        "https://id.twitch.tv/oauth2/validate",
-        { headers: { Authorization: `OAuth ${stored.access_token}` } },
+
+/** A short distributed lease prevents separate instances from rotating the same refresh token. */
+export async function userToken(initial: Integration): Promise<string> {
+  const ref = integrationRef(initial.owner_id),
+    leaseId = crypto.randomUUID(),
+    deadline = Date.now() + 6500;
+  for (;;) {
+    const claim = await store().runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists)
+        throw new HttpError(
+          401,
+          "Twitch is disconnected. Connect the channel again.",
+        );
+      const row = snapshot.data() as Integration;
+      if (
+        row.status === "disconnecting" ||
+        row.broadcaster_id !== initial.broadcaster_id
+      )
+        throw new HttpError(
+          401,
+          "Twitch is disconnecting or has changed. Refresh the studio.",
+        );
+      const tokens = await decrypt<Tokens>(
+        row.encrypted_tokens,
+        runtime().TOKEN_ENCRYPTION_KEY!,
       );
       if (
-        checked.user_id !== row.broadcaster_id ||
-        checked.client_id !== e.TWITCH_CLIENT_ID
+        typeof tokens?.access_token !== "string" ||
+        !tokens.access_token ||
+        typeof tokens.refresh_token !== "string" ||
+        !tokens.refresh_token ||
+        !Number.isFinite(tokens.expiresAt) ||
+        !Number.isFinite(tokens.validatedAt)
       )
-        throw new Error("Token identity mismatch.");
-      stored.validatedAt = Date.now();
-      await e.DB.prepare(
-        "UPDATE integrations SET encrypted_tokens=? WHERE owner_id=? AND encrypted_tokens=?",
+        throw new HttpError(
+          401,
+          "Stored Twitch authorization is invalid. Reconnect Twitch.",
+        );
+      if (
+        tokens.expiresAt > Date.now() + 120000 &&
+        tokens.validatedAt > Date.now() - 3600000
       )
-        .bind(
-          await encrypt(stored, e.TOKEN_ENCRYPTION_KEY!),
-          row.owner_id,
-          row.encrypted_tokens,
+        return { row, tokens, mode: "ready" as const };
+      if (row.refresh_lease && row.refresh_lease.until > Date.now())
+        return { row, tokens, mode: "wait" as const };
+      tx.update(ref, {
+        refresh_lease: { id: leaseId, until: Date.now() + 30000 },
+      });
+      return { row, tokens, mode: "claimed" as const };
+    });
+    if (claim.mode === "ready") return claim.tokens.access_token;
+    if (claim.mode === "wait") {
+      if (Date.now() >= deadline)
+        throw new HttpError(
+          503,
+          "Twitch authorization is refreshing. Try again shortly.",
+        );
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      continue;
+    }
+    try {
+      let next = claim.tokens;
+      if (next.expiresAt > Date.now() + 120000) {
+        try {
+          const validated = await requestJson(
+            "https://id.twitch.tv/oauth2/validate",
+            { headers: { Authorization: `OAuth ${next.access_token}` } },
+          );
+          const scopes = validated.scopes;
+          if (
+            validated?.user_id !== claim.row.broadcaster_id ||
+            validated?.client_id !== runtime().TWITCH_CLIENT_ID ||
+            !Array.isArray(scopes) ||
+            SCOPES.some((scope) => !scopes.includes(scope))
+          )
+            throw new HttpError(
+              401,
+              "Twitch authorization changed. Reconnect Twitch.",
+            );
+          next = { ...next, validatedAt: Date.now() };
+        } catch (error) {
+          if (
+            !(
+              error instanceof TwitchRequestError &&
+              error.upstreamStatus === 401
+            )
+          )
+            throw error;
+          next = { ...next, expiresAt: 0 };
+        }
+      }
+      if (next.expiresAt <= Date.now() + 120000) {
+        const fresh = await requestJson("https://id.twitch.tv/oauth2/token", {
+          method: "POST",
+          body: new URLSearchParams({
+            client_id: runtime().TWITCH_CLIENT_ID!,
+            client_secret: runtime().TWITCH_CLIENT_SECRET!,
+            grant_type: "refresh_token",
+            refresh_token: next.refresh_token,
+          }),
+        });
+        next = tokenResult(fresh, next.refresh_token);
+      }
+      const encrypted = await encrypt(next, runtime().TOKEN_ENCRYPTION_KEY!);
+      const committed = await store().runTransaction(async (tx) => {
+        const snapshot = await tx.get(ref);
+        if (!snapshot.exists)
+          throw new HttpError(
+            401,
+            "Twitch was disconnected while authorization refreshed.",
+          );
+        const current = snapshot.data() as Integration;
+        if (current.status === "disconnecting")
+          throw new HttpError(401, "Twitch is disconnecting.");
+        if (
+          !authorizationMatches(current, claim.row) ||
+          current.encrypted_tokens !== claim.row.encrypted_tokens ||
+          current.refresh_lease?.id !== leaseId
         )
-        .run();
-      return stored.access_token;
-    } catch {
-      /* Refresh revoked or expired access below. */
+          return false;
+        tx.update(ref, {
+          encrypted_tokens: encrypted,
+          refresh_lease: null,
+          error: null,
+          updated_at: new Date().toISOString(),
+        });
+        return true;
+      });
+      if (committed) return next.access_token;
+      // A reconnect won the race. Read its current token rather than return ours.
+      continue;
+    } catch (error) {
+      const revokedAuthorization = await store().runTransaction(async (tx) => {
+        const snapshot = await tx.get(ref);
+        if (!snapshot.exists) return null;
+        const current = snapshot.data() as Integration;
+        if (
+          current.refresh_lease?.id !== leaseId ||
+          !authorizationMatches(current, claim.row)
+        )
+          return null;
+        const revoked =
+          (error instanceof HttpError && error.status === 401) ||
+          (error instanceof TwitchRequestError &&
+            [400, 401].includes(error.upstreamStatus));
+        tx.update(ref, {
+          refresh_lease: null,
+          ...(revoked
+            ? {
+                status: "error",
+                error:
+                  "Authorization expired or permissions changed. Reconnect Twitch.",
+              }
+            : {}),
+        });
+        return revoked ? { ...current, status: "error" } : null;
+      });
+      if (revokedAuthorization)
+        await syncPublicConnection(
+          initial.owner_id,
+          false,
+          revokedAuthorization,
+        );
+      if (
+        error instanceof TwitchRequestError &&
+        [400, 401].includes(error.upstreamStatus)
+      )
+        throw new HttpError(
+          401,
+          "Twitch authorization expired. Reconnect Twitch.",
+        );
+      throw error;
     }
   }
-  try {
-    const fresh = await requestJson("https://id.twitch.tv/oauth2/token", {
-      method: "POST",
-      body: new URLSearchParams({
-        client_id: e.TWITCH_CLIENT_ID!,
-        client_secret: e.TWITCH_CLIENT_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: stored.refresh_token,
-      }),
-    });
-    const next: Tokens = {
-      access_token: fresh.access_token,
-      refresh_token: fresh.refresh_token,
-      expiresAt: Date.now() + fresh.expires_in * 1000,
-      validatedAt: Date.now(),
-    };
-    await e.DB.prepare(
-      "UPDATE integrations SET encrypted_tokens=?,error=NULL,updated_at=? WHERE owner_id=? AND encrypted_tokens=?",
-    )
-      .bind(
-        await encrypt(next, e.TOKEN_ENCRYPTION_KEY!),
-        new Date().toISOString(),
-        row.owner_id,
-        row.encrypted_tokens,
-      )
-      .run();
-    return next.access_token;
-  } catch {
-    await e.DB.prepare(
-      "UPDATE integrations SET status='error',error='Authorization expired. Reconnect Twitch.' WHERE owner_id=?",
-    )
-      .bind(row.owner_id)
-      .run();
-    throw new HttpError(401, "Twitch authorization expired. Reconnect Twitch.");
-  }
 }
-export async function subscriptions(owner: string, origin: string) {
+
+/** Traverse every page, bounded against malformed or repeating provider cursors. */
+export async function listEventSubscriptions(
+  token: string,
+  signal?: AbortSignal,
+): Promise<Subscription[]> {
+  const results: Subscription[] = [],
+    cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const query = new URLSearchParams({ first: "100" });
+    if (cursor) query.set("after", cursor);
+    const response = await helix(`eventsub/subscriptions?${query}`, token, {
+      signal,
+    });
+    if (!Array.isArray(response?.data))
+      throw new HttpError(502, "Twitch returned an invalid subscription list.");
+    if (!response.data.every(isSubscription))
+      throw new HttpError(502, "Twitch returned malformed subscription data.");
+    results.push(...response.data);
+    const pagination = response.pagination;
+    const next = isRecord(pagination) ? pagination.cursor : undefined;
+    if (next === undefined || next === null || next === "") return results;
+    if (typeof next !== "string" || cursors.has(next))
+      throw new HttpError(
+        502,
+        "Twitch subscription pagination could not be completed. Try again.",
+      );
+    cursors.add(next);
+    cursor = next;
+  }
+  throw new HttpError(
+    503,
+    "Too many Twitch subscription pages. Try again shortly.",
+  );
+}
+function subscriptionBelongsTo(sub: Subscription, row: Integration): boolean {
+  return (
+    ["channel.chat.message", "channel.raid"].includes(sub.type) &&
+    (sub.condition?.broadcaster_user_id ??
+      sub.condition?.to_broadcaster_user_id) === row.broadcaster_id &&
+    (sub.type !== "channel.chat.message" ||
+      sub.condition.user_id === row.broadcaster_id)
+  );
+}
+export async function subscriptions(
+  owner: string,
+  origin: string,
+): Promise<void> {
   const row = await integration(owner);
-  if (!row) throw new HttpError(409, "Connect a Twitch channel first.");
-  const token = await appToken();
-  const listing = await helix("eventsub/subscriptions?first=100", token);
-  const target = `${origin}/api/twitch/webhook`;
+  if (!row || row.status === "disconnecting")
+    throw new HttpError(409, "Connect a Twitch channel first.");
+  const token = await appToken(),
+    listing = await listEventSubscriptions(token),
+    target = `${origin}/api/twitch/webhook`;
   const desired = [
     {
       type: "channel.chat.message",
@@ -247,12 +526,11 @@ export async function subscriptions(owner: string, origin: string) {
   ];
   const ids: string[] = [];
   for (const item of desired) {
-    const found = listing.data?.find(
-      (sub: any) =>
+    const found = listing.find(
+      (sub) =>
         sub.type === item.type &&
-        (sub.condition.broadcaster_user_id ??
-          sub.condition.to_broadcaster_user_id) === row.broadcaster_id &&
-        sub.transport.callback === target &&
+        subscriptionBelongsTo(sub, row) &&
+        sub.transport?.callback === target &&
         ["enabled", "webhook_callback_verification_pending"].includes(
           sub.status,
         ),
@@ -261,111 +539,246 @@ export async function subscriptions(owner: string, origin: string) {
       ids.push(found.id);
       continue;
     }
-    const created = await helix("eventsub/subscriptions", token, {
-      method: "POST",
-      body: JSON.stringify({
-        ...item,
-        version: "1",
-        transport: {
-          method: "webhook",
-          callback: target,
-          secret: runtime().TWITCH_WEBHOOK_SECRET!,
-        },
-      }),
-    });
-    if (created.data?.[0]?.id) ids.push(created.data[0].id);
+    let created: Record<string, unknown>;
+    try {
+      created = await helix("eventsub/subscriptions", token, {
+        method: "POST",
+        body: JSON.stringify({
+          ...item,
+          version: "1",
+          transport: {
+            method: "webhook",
+            callback: target,
+            secret: runtime().TWITCH_WEBHOOK_SECRET!,
+          },
+        }),
+      });
+    } catch (error) {
+      // Two setup requests can race after listing the same empty page. Reuse
+      // the winner's subscription rather than present a spurious failure.
+      if (
+        !(error instanceof TwitchRequestError && error.upstreamStatus === 409)
+      )
+        throw error;
+      const winner = (await listEventSubscriptions(token)).find(
+        (sub) =>
+          sub.type === item.type &&
+          subscriptionBelongsTo(sub, row) &&
+          sub.transport?.callback === target &&
+          ["enabled", "webhook_callback_verification_pending"].includes(
+            sub.status,
+          ),
+      );
+      if (!winner) throw error;
+      ids.push(winner.id);
+      continue;
+    }
+    const subscription: unknown = Array.isArray(created.data)
+      ? created.data[0]
+      : undefined;
+    if (!isRecord(subscription) || typeof subscription.id !== "string")
+      throw new HttpError(
+        502,
+        "Twitch did not confirm event setup. Retry in Channel setup.",
+      );
+    ids.push(subscription.id);
   }
-  await runtime()
-    .DB.prepare(
-      "UPDATE integrations SET subscription_ids=?,status='connecting',error=NULL,updated_at=? WHERE owner_id=?",
+  const pending = await store().runTransaction(async (tx) => {
+    const ref = integrationRef(owner),
+      current = await tx.get(ref);
+    if (
+      !current.exists ||
+      current.data()?.status === "disconnecting" ||
+      !authorizationMatches(current.data() as Integration, row)
     )
-    .bind(JSON.stringify(ids), new Date().toISOString(), owner)
-    .run();
+      throw new HttpError(
+        409,
+        "Twitch authorization changed during event setup. Refresh and retry.",
+      );
+    tx.update(ref, {
+      subscription_ids: JSON.stringify(ids),
+      status: "connecting",
+      error: null,
+      updated_at: new Date().toISOString(),
+    });
+    return { ...current.data(), status: "connecting" } as Integration;
+  });
+  await syncPublicConnection(owner, false, pending);
+}
+/** Keep public participation honest without writing an unchanged view every poll. */
+export async function syncPublicConnection(
+  owner: string,
+  ready: boolean,
+  expected?: Integration | null,
+): Promise<void> {
+  const db = store();
+  await db.runTransaction(async (tx) => {
+    const room = await tx.get(db.collection("rooms").doc(owner));
+    const publicId = room.data()?.public_id;
+    if (!room.exists || typeof publicId !== "string" || !publicId) return;
+    const publicRef = db.collection("publicRooms").doc(publicId);
+    const [view, current] = await Promise.all([
+      tx.get(publicRef),
+      tx.get(integrationRef(owner)),
+    ]);
+    const document = view.data();
+    if (!view.exists || document?.owner_id !== owner || !document.state) return;
+    if (expected === null && current.exists) return;
+    if (
+      expected &&
+      (!current.exists ||
+        !authorizationMatches(current.data() as Integration, expected) ||
+        current.data()?.status !== expected.status)
+    )
+      return;
+    // An in-flight verification must never restore invitations after disconnect.
+    const chatReady =
+      ready && current.exists && current.data()?.status === "connected";
+    if (document.state.chatReady !== chatReady)
+      tx.update(publicRef, { state: { ...document.state, chatReady } });
+  });
 }
 export async function connectionFor(
   owner: string,
   request: Request,
   refresh = false,
 ): Promise<Connection> {
-  const row = await integration(owner);
+  let row = await integration(owner);
   const base = {
     configured: configured(),
     callbackUrl: `${siteOrigin(request)}/api/twitch/callback`,
     clientIdConfigured: !!runtime().TWITCH_CLIENT_ID,
   };
-  if (!row) return { ...base, connected: false };
+  if (!row) {
+    if (refresh) await syncPublicConnection(owner, false, null);
+    return { ...base, connected: false };
+  }
   let status = row.status,
     error = row.error;
-  if (refresh && base.configured) {
+  if (refresh && base.configured && status !== "disconnecting") {
     try {
       await userToken(row);
-      const all = await helix(
-        "eventsub/subscriptions?first=100",
-        await appToken(),
+      const all = await listEventSubscriptions(await appToken()),
+        ids = stringList(row.subscription_ids);
+      const selected = all.filter(
+        (sub) => ids.includes(sub.id) && subscriptionBelongsTo(sub, row!),
       );
-      const ids: string[] = JSON.parse(row.subscription_ids);
-      const selected = all.data?.filter((x: any) => ids.includes(x.id)) ?? [];
-      const chat = selected.find((x: any) => x.type === "channel.chat.message");
-      const raid = selected.find((x: any) => x.type === "channel.raid");
+      const chat = selected.find((sub) => sub.type === "channel.chat.message"),
+        raid = selected.find((sub) => sub.type === "channel.raid");
       status =
         chat?.status === "enabled" && raid?.status === "enabled"
           ? "connected"
           : "connecting";
       error = selected.some(
-        (x: any) =>
+        (sub) =>
           !["enabled", "webhook_callback_verification_pending"].includes(
-            x.status,
+            sub.status,
           ),
       )
         ? "Twitch revoked an event subscription. Reconnect."
         : null;
-      await runtime()
-        .DB.prepare(
-          "UPDATE integrations SET status=?,error=?,updated_at=? WHERE owner_id=?",
+      const original = row;
+      const retained = await store().runTransaction(async (tx) => {
+        const ref = integrationRef(owner),
+          snapshot = await tx.get(ref);
+        if (
+          !snapshot.exists ||
+          !authorizationMatches(snapshot.data() as Integration, original) ||
+          snapshot.data()?.status === "disconnecting"
         )
-        .bind(status, error, new Date().toISOString(), owner)
-        .run();
+          return null;
+        tx.update(ref, { status, error, updated_at: new Date().toISOString() });
+        return { ...snapshot.data(), status, error } as Integration;
+      });
+      if (!retained) {
+        await syncPublicConnection(owner, false, row);
+        return {
+          ...base,
+          connected: false,
+          error: "Twitch authorization changed. Refresh the studio.",
+        };
+      }
+      row = retained;
     } catch {
       status = "error";
       error = "Unable to verify Twitch. Reconnect or retry.";
     }
   }
+  const ready = base.configured && status === "connected";
+  if (refresh) await syncPublicConnection(owner, ready, row);
   return {
     ...base,
-    connected: status === "connected",
+    connected: ready,
     channel: row.channel,
     broadcasterId: row.broadcaster_id,
-    scopes: JSON.parse(row.scopes),
+    scopes: stringList(row.scopes),
     updatedAt: row.updated_at,
-    error: error ?? undefined,
+    error: error ?? row.delivery_error ?? undefined,
     webhookStatus: status,
   };
 }
-export async function disconnect(owner: string) {
-  const row = await integration(owner);
+export async function disconnect(owner: string): Promise<boolean | undefined> {
+  const ref = integrationRef(owner);
+  const row = await store().runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    if (!snapshot.exists) return null;
+    const current = snapshot.data() as Integration;
+    tx.update(ref, {
+      status: "disconnecting",
+      refresh_lease: null,
+      updated_at: new Date().toISOString(),
+    });
+    return current;
+  });
+  await syncPublicConnection(
+    owner,
+    false,
+    row ? { ...row, status: "disconnecting" } : null,
+  );
   if (!row) return;
   let cleanupError = false;
+  const cleanupSignal = AbortSignal.timeout(15000);
   try {
-    const token = await appToken();
-    for (const id of JSON.parse(row.subscription_ids)) {
-      const response = await fetch(
-        `https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Client-Id": runtime().TWITCH_CLIENT_ID!,
-            Authorization: `Bearer ${token}`,
-          },
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      if (!response.ok && response.status !== 404) cleanupError = true;
+    const token = await appToken(),
+      tracked = new Set(stringList(row.subscription_ids));
+    try {
+      for (const sub of await listEventSubscriptions(token, cleanupSignal))
+        if (subscriptionBelongsTo(sub, row)) tracked.add(sub.id);
+    } catch {
+      cleanupError = true;
     }
+    for (const id of tracked) {
+      if (cleanupSignal.aborted) {
+        cleanupError = true;
+        break;
+      }
+      try {
+        const response = await fetch(
+          `https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Client-Id": runtime().TWITCH_CLIENT_ID!,
+              Authorization: `Bearer ${token}`,
+            },
+            signal: AbortSignal.any([cleanupSignal, AbortSignal.timeout(5000)]),
+          },
+        );
+        if (!response.ok && response.status !== 404) cleanupError = true;
+      } catch {
+        cleanupError = true;
+      }
+    }
+  } catch {
+    cleanupError = true;
+  }
+  // Revoke even when listing/deleting subscriptions failed.
+  try {
     const tokens = await decrypt<Tokens>(
       row.encrypted_tokens,
       runtime().TOKEN_ENCRYPTION_KEY!,
     );
-    const revoked = await fetch("https://id.twitch.tv/oauth2/revoke", {
+    const response = await fetch("https://id.twitch.tv/oauth2/revoke", {
       method: "POST",
       body: new URLSearchParams({
         client_id: runtime().TWITCH_CLIENT_ID!,
@@ -373,39 +786,135 @@ export async function disconnect(owner: string) {
       }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!revoked.ok) cleanupError = true;
+    if (!response.ok) cleanupError = true;
   } catch {
     cleanupError = true;
   }
-  // Always erase the locally stored tokens; after this callbacks cannot mutate the room.
-  await runtime().DB.batch([
-    runtime()
-      .DB.prepare("DELETE FROM integrations WHERE owner_id=?")
-      .bind(owner),
-    runtime().DB.prepare("DELETE FROM outbox WHERE owner_id=?").bind(owner),
-  ]);
-  return cleanupError;
+  await store().runTransaction(async (tx) => {
+    const channelRef = store()
+      .collection("channels")
+      .doc(docId(row.broadcaster_id));
+    const [current, channel] = await Promise.all([
+      tx.get(ref),
+      tx.get(channelRef),
+    ]);
+    if (
+      current.exists &&
+      authorizationMatches(current.data() as Integration, row)
+    )
+      tx.delete(ref);
+    if (channel.exists && channel.data()?.owner_id === owner)
+      tx.delete(channelRef);
+  });
+  // Bound each batch and the cleanup duration. Remaining old rows expire by TTL.
+  for (let page = 0; page < 10; page++) {
+    const pending = await store()
+      .collection("outbox")
+      .where("owner_id", "==", owner)
+      .limit(400)
+      .get();
+    if (pending.empty) return cleanupError;
+    const batch = store().batch();
+    for (const document of pending.docs) batch.delete(document.ref);
+    await batch.commit();
+  }
+  return true;
 }
-export async function flushReply(owner: string, eventId: string) {
-  const db = runtime().DB;
-  const message = await db
-    .prepare(
-      "SELECT * FROM outbox WHERE id=? AND owner_id=? AND status='pending'",
-    )
-    .bind(eventId, owner)
-    .first<{ reply: string; parent_id: string | null }>();
+async function invitationIsCurrent(
+  message: Outbound,
+  owner: string,
+  transaction?: Transaction,
+): Promise<boolean> {
+  if (!/^NOW:|!(?:join|vote|pitch)\b/i.test(message.reply)) return true;
+  const read = (ref: DocumentReference) =>
+    transaction ? transaction.get(ref) : ref.get();
+  let publicId = message.public_id;
+  if (!publicId) {
+    const room = await read(store().collection("rooms").doc(owner));
+    if (!room.exists) return false;
+    publicId = room.get("public_id");
+  }
+  if (typeof publicId !== "string" || !publicId) return false;
+  const publication = await read(
+    store().collection("publicRooms").doc(publicId),
+  );
+  const state = publication.get("state") as RallyState | undefined;
+  return (
+    publication.exists &&
+    publication.get("owner_id") === owner &&
+    !!state &&
+    state.brief.version === message.brief_version &&
+    state.brief.status === "live" &&
+    Date.parse(state.brief.expiresAt) > Date.now()
+  );
+}
+export async function flushReply(
+  owner: string,
+  eventId: string,
+): Promise<void> {
+  const ref = store()
+    .collection("outbox")
+    .doc(docId(owner + ":" + eventId));
+  const message = await store().runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    if (!snapshot.exists) return null;
+    const current = snapshot.data() as Outbound;
+    if (current.owner_id !== owner) return null;
+    if (current.status === "sending") {
+      if (
+        !Number.isFinite(Date.parse(current.created_at)) ||
+        Date.now() - Date.parse(current.created_at) > 60000
+      ) {
+        const connection = await tx.get(integrationRef(owner));
+        const detail =
+          "A previous chat delivery could not be confirmed. It will not be resent automatically.";
+        tx.update(ref, { status: "failed", error: detail });
+        if (connection.exists)
+          tx.update(integrationRef(owner), { delivery_error: detail });
+        return null;
+      }
+      // A concurrent queue delivery must not acknowledge a task whose first
+      // attempt may still fail safely before it reaches Twitch.
+      throw new HttpError(
+        503,
+        "This reply is already being delivered. Retry after the in-flight attempt finishes.",
+      );
+    }
+    if (current.status !== "pending") return null;
+    const createdAt = Date.parse(current.created_at),
+      expiresAt = current.expiresAt?.toMillis();
+    const stale =
+      !Number.isFinite(createdAt) ||
+      Date.now() - createdAt > 60000 ||
+      createdAt > Date.now() + 60000 ||
+      (expiresAt !== undefined && expiresAt <= Date.now()) ||
+      !(await invitationIsCurrent(current, owner, tx));
+    if (stale) {
+      const connection = await tx.get(integrationRef(owner));
+      const detail =
+        "An old chat reply was suppressed after its context changed. New replies will use the current brief.";
+      tx.update(ref, { status: "failed", error: detail });
+      if (connection.exists)
+        tx.update(integrationRef(owner), { delivery_error: detail });
+      return null;
+    }
+    tx.update(ref, { status: "sending", error: null });
+    return current;
+  });
   if (!message) return;
-  const claim = await db
-    .prepare(
-      "UPDATE outbox SET status='sending' WHERE id=? AND status='pending'",
-    )
-    .bind(eventId)
-    .run();
-  if (claim.meta.changes !== 1) return;
+  let sendAttempted = false;
   try {
     const row = await integration(owner);
-    if (!row) throw new Error("Disconnected.");
+    if (!row || row.status === "disconnecting")
+      throw new HttpError(401, "Twitch is disconnected.");
     const token = await userToken(row);
+    // Token renewal can take several seconds. Check again immediately before sending.
+    if (!(await invitationIsCurrent(message, owner)))
+      throw new HttpError(
+        409,
+        "The queued reply was superseded by a newer or closed brief.",
+      );
+    sendAttempted = true;
     const sent = await helix("chat/messages", token, {
       method: "POST",
       body: JSON.stringify({
@@ -417,18 +926,45 @@ export async function flushReply(owner: string, eventId: string) {
           : {}),
       }),
     });
-    if (!sent.data?.[0]?.is_sent)
-      throw new Error("Twitch held or dropped the reply.");
-    await db
-      .prepare("UPDATE outbox SET status='sent',error=NULL WHERE id=?")
-      .bind(eventId)
-      .run();
-  } catch {
-    await db
-      .prepare(
-        "UPDATE outbox SET status='failed',error='Reply was not confirmed by Twitch. Not retried automatically to avoid duplicate chat.' WHERE id=?",
+    const confirmation: unknown = Array.isArray(sent.data)
+      ? sent.data[0]
+      : undefined;
+    if (!isRecord(confirmation) || confirmation.is_sent !== true)
+      throw new HttpError(409, "Twitch held or dropped the reply.");
+    await store().runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref),
+        connection = await tx.get(integrationRef(owner));
+      if (snapshot.exists) tx.update(ref, { status: "sent", error: null });
+      if (
+        connection.exists &&
+        authorizationMatches(connection.data() as Integration, row)
       )
-      .bind(eventId)
-      .run();
+        tx.update(integrationRef(owner), { delivery_error: null });
+    });
+  } catch (error) {
+    const retrySafe = !sendAttempted && transient(error);
+    const detail = retrySafe
+      ? "Chat delivery is waiting for Twitch to recover. Retrying shortly."
+      : !sendAttempted && error instanceof HttpError
+        ? error.message
+        : "A chat reply was not confirmed by Twitch. It will not be resent automatically.";
+    await store().runTransaction(async (tx) => {
+      const [snapshot, connection] = await Promise.all([
+        tx.get(ref),
+        tx.get(integrationRef(owner)),
+      ]);
+      if (snapshot.exists)
+        tx.update(ref, {
+          status: retrySafe ? "pending" : "failed",
+          error: detail,
+        });
+      if (connection.exists)
+        tx.update(integrationRef(owner), { delivery_error: detail });
+    });
+    if (retrySafe)
+      throw new HttpError(
+        503,
+        "Twitch is temporarily unavailable. Retry this pending reply.",
+      );
   }
 }

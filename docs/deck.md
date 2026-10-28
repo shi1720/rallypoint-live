@@ -1,6 +1,6 @@
 # Supplementary pitch deck
 
-The six-slide editable presentation is **Rallypoint — Give every viewer a way in**. It supports a short pitch and does not replace the hackathon's required public YouTube demonstration.
+The six-slide editable presentation is **Rallypoint : Give every viewer a way in**. It supports a short pitch and does not replace the hackathon's required public YouTube demonstration.
 
 | Slide                        | Presenter emphasis                                                                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |

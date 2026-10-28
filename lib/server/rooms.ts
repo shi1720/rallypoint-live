@@ -1,139 +1,170 @@
-import { createState, transition } from "../rally/engine";
+import { Timestamp } from "firebase-admin/firestore";
+import { createState, publicState, transition } from "../rally/engine";
 import type { Action, RallyState, Transition } from "../rally/types";
-import { runtime } from "./env";
+import { store, docId, expiry, encodeState, decodeState } from "./store";
 import { HttpError, randomToken } from "./security";
-type Row = {
-  id: string;
-  owner_id: string;
-  public_id: string;
-  revision: number;
-  state: string;
-  updated_at: string;
-};
 export async function getRoom(
   ownerId: string,
-  creator = "Creator",
+  creator = "Your community",
 ): Promise<RallyState> {
-  const db = runtime().DB;
-  let row = await db
-    .prepare("SELECT * FROM rooms WHERE owner_id=?")
-    .bind(ownerId)
-    .first<Row>();
-  if (!row) {
+  const db = store(),
+    ref = db.collection("rooms").doc(ownerId);
+  return db.runTransaction(async (tx) => {
+    const row = await tx.get(ref);
+    if (row.exists) return decodeState(row.get("body"));
     const initial = createState({
       id: crypto.randomUUID(),
       publicId: randomToken(18),
       creator,
     });
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO rooms (id,owner_id,public_id,revision,state,updated_at) VALUES (?,?,?,?,?,?)",
-      )
-      .bind(
-        initial.id,
-        ownerId,
-        initial.publicId,
-        initial.revision,
-        JSON.stringify(initial),
-        initial.updatedAt,
-      )
-      .run();
-    row = await db
-      .prepare("SELECT * FROM rooms WHERE owner_id=?")
-      .bind(ownerId)
-      .first<Row>();
-  }
-  if (!row) throw new HttpError(503, "Unable to open the studio.");
-  return JSON.parse(row.state);
+    tx.create(ref, {
+      owner_id: ownerId,
+      public_id: initial.publicId,
+      revision: 0,
+      body: encodeState(initial),
+      updated_at: initial.updatedAt,
+    });
+    tx.create(db.collection("publicRooms").doc(initial.publicId), {
+      owner_id: ownerId,
+      state: { ...publicState(initial), chatReady: false },
+    });
+    return initial;
+  });
 }
 export async function findPublic(id: string): Promise<RallyState | null> {
   if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return null;
-  const row = await runtime()
-    .DB.prepare("SELECT state FROM rooms WHERE public_id=?")
-    .bind(id)
-    .first<{ state: string }>();
-  return row ? JSON.parse(row.state) : null;
+  const snap = await store().collection("publicRooms").doc(id).get();
+  return snap.exists ? (snap.get("state") as RallyState) : null;
 }
 export async function mutateRoom(
   ownerId: string,
   action: Action,
   outbound?: { id: string; parentId?: string },
 ): Promise<Transition> {
-  const db = runtime().DB;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const old = await getRoom(ownerId);
-    if (
-      outbound &&
-      (await db
-        .prepare("SELECT id FROM event_receipts WHERE id=?")
-        .bind(outbound.id)
-        .first())
-    )
-      return { state: old, changed: false };
-    let result: Transition;
-    try {
-      result = transition(old, action);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Invalid action.";
-      throw new HttpError(
-        /changed|conflict/i.test(message) ? 409 : 400,
-        message,
+  await getRoom(ownerId);
+  const db = store(),
+    ref = db.collection("rooms").doc(ownerId);
+  return db.runTransaction(
+    async (tx) => {
+      const row = await tx.get(ref);
+      if (!row.exists) throw new HttpError(404, "Studio not found.");
+      const old = decodeState(row.get("body"));
+      const receiptRef = outbound
+        ? db.collection("receipts").doc(docId(ownerId + ":" + outbound.id))
+        : null;
+      if (receiptRef) {
+        const existing = await tx.get(receiptRef);
+        if (existing.exists) return { state: old, changed: false };
+      }
+      const connection = await tx.get(
+        db.collection("integrations").doc(ownerId),
       );
-    }
-    if (!result.changed) return result;
-    result.state.revision = old.revision + 1;
-    const update = db.prepare(
-      "UPDATE rooms SET state=?,revision=?,updated_at=? WHERE owner_id=? AND revision=?" +
-        (outbound
-          ? " AND NOT EXISTS (SELECT 1 FROM event_receipts WHERE id=?)"
-          : ""),
-    );
-    const args: any[] = [
-      JSON.stringify(result.state),
-      result.state.revision,
-      result.state.updatedAt,
-      ownerId,
-      old.revision,
-    ];
-    if (outbound) args.push(outbound.id);
-    let changed = false;
-    if (outbound) {
-      const batch = [
-        update.bind(...args),
-        db
-          .prepare(
-            "INSERT OR IGNORE INTO event_receipts(id,owner_id,received_at) SELECT ?,?,? WHERE changes()=1",
-          )
-          .bind(outbound.id, ownerId, Date.now()),
-      ];
-      if (result.reply)
-        batch.push(
-          db
-            .prepare(
-              "INSERT OR IGNORE INTO outbox(id,owner_id,reply,parent_id,status,created_at) SELECT ?,?,?,?,'pending',? WHERE changes()=1",
-            )
-            .bind(
-              outbound.id,
-              ownerId,
-              result.reply,
-              outbound.parentId ?? null,
-              new Date().toISOString(),
-            ),
+      let result: Transition;
+      try {
+        result = transition(old, action);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Invalid action.";
+        throw new HttpError(
+          /changed|conflict|refresh/i.test(message) ? 409 : 400,
+          message,
         );
-      const writes = await db.batch(batch);
-      changed = writes[0].meta.changes === 1;
-    } else changed = (await update.bind(...args).run()).meta.changes === 1;
-    if (changed) return result;
-  }
-  throw new HttpError(
-    409,
-    "The studio changed concurrently. Please try again.",
+      }
+      if (!result.changed) {
+        if (receiptRef)
+          tx.create(receiptRef, {
+            owner_id: ownerId,
+            expiresAt: expiry(),
+            created_at: Timestamp.now(),
+          });
+        return result;
+      }
+      result.state.revision = old.revision + 1;
+      tx.update(ref, {
+        body: encodeState(result.state),
+        revision: result.state.revision,
+        updated_at: result.state.updatedAt,
+      });
+      tx.set(db.collection("publicRooms").doc(result.state.publicId), {
+        owner_id: ownerId,
+        state: {
+          ...publicState(result.state),
+          chatReady:
+            connection.exists && connection.get("status") === "connected",
+        },
+      });
+      if (receiptRef && outbound) {
+        tx.create(receiptRef, {
+          owner_id: ownerId,
+          expiresAt: expiry(),
+          created_at: Timestamp.now(),
+        });
+        if (result.reply)
+          tx.create(
+            db.collection("outbox").doc(docId(ownerId + ":" + outbound.id)),
+            {
+              id: outbound.id,
+              eventId: outbound.id,
+              owner_id: ownerId,
+              reply: result.reply,
+              parent_id: outbound.parentId ?? null,
+              status: "pending",
+              created_at: new Date().toISOString(),
+              expiresAt: expiry(),
+              public_id: old.publicId,
+              brief_version: old.brief.version,
+              brief_expires_at: old.brief.expiresAt,
+            },
+          );
+      }
+      return result;
+    },
+    { maxAttempts: 6 },
   );
 }
 export async function lookupOwner(broadcasterId: string) {
-  return runtime()
-    .DB.prepare("SELECT owner_id FROM integrations WHERE broadcaster_id=?")
-    .bind(broadcasterId)
-    .first<{ owner_id: string }>();
+  const doc = await store()
+    .collection("channels")
+    .doc(docId(broadcasterId))
+    .get();
+  return doc.exists ? { owner_id: doc.get("owner_id") as string } : null;
+}
+export async function recordOpen(publicId: string, visitorKey: string) {
+  const db = store(),
+    pub = db.collection("publicRooms").doc(publicId),
+    open = db
+      .collection("opens")
+      .doc(
+        docId(
+          publicId +
+            ":" +
+            visitorKey +
+            ":" +
+            new Date().toISOString().slice(0, 10),
+        ),
+      );
+  return db.runTransaction(async (tx) => {
+    const [view, receipt] = await Promise.all([tx.get(pub), tx.get(open)]);
+    if (!view.exists) throw new HttpError(404, "Page not found.");
+    if (receipt.exists) return false;
+    const privateRef = db.collection("rooms").doc(view.get("owner_id"));
+    const privateSnap = await tx.get(privateRef);
+    if (!privateSnap.exists) throw new HttpError(404, "Studio not found.");
+    const result = transition(decodeState(privateSnap.get("body")), {
+      type: "open",
+    });
+    tx.update(privateRef, {
+      body: encodeState(result.state),
+      revision: result.state.revision,
+      updated_at: result.state.updatedAt,
+    });
+    tx.update(pub, {
+      state: {
+        ...publicState(result.state),
+        chatReady: view.get("state").chatReady ?? false,
+      },
+    });
+    tx.create(open, { expiresAt: expiry(), created_at: Timestamp.now() });
+    return true;
+  });
 }

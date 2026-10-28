@@ -247,6 +247,14 @@ export function transition(
   if (!action || typeof action !== "object" || typeof action.type !== "string")
     throw new Error("A valid action is required.");
   if (action.type === "reset") {
+    if (
+      action.expectedRevision !== undefined &&
+      (!Number.isInteger(action.expectedRevision) ||
+        action.expectedRevision !== input.revision)
+    )
+      throw new Error(
+        "This session changed in another tab. Refresh before starting a new session.",
+      );
     const state = createState(
       {
         id: input.id,
@@ -257,6 +265,7 @@ export function transition(
       at.iso,
     );
     state.revision = input.revision + 1;
+    state.brief.version = input.brief.version;
     return { state, changed: true };
   }
   const state = structuredClone(input);
@@ -288,6 +297,14 @@ export function transition(
       break;
     }
     case "close":
+      if (
+        action.expectedVersion !== undefined &&
+        (!Number.isInteger(action.expectedVersion) ||
+          action.expectedVersion !== state.brief.version)
+      )
+        throw new Error(
+          "This brief changed in another tab. Refresh before closing it.",
+        );
       if (state.brief.status === "closed")
         return { state: input, changed: false };
       state.brief.status = "closed";
@@ -520,9 +537,14 @@ function catchup(state: RallyState): string {
   const options = brief.choices
     .map((choice) => `!join ${choice.id}: ${clip(choice.label, 35)}`)
     .join(" | ");
-  return clip(
-    `NOW: ${clip(brief.title, 80)}. WHY: ${clip(brief.context, 140)} ${clip(brief.stakes, 70)} JOIN: ${options}`,
-    480,
+  const prefix = `NOW: ${clip(brief.title, 80)}. WHY: `;
+  const invitation = ` JOIN: ${options}`;
+  // Reserve every executable command before shortening the background text.
+  const background = `${clip(brief.context, 140)} ${clip(brief.stakes, 70)}`;
+  return (
+    prefix +
+    clip(background, 480 - prefix.length - invitation.length) +
+    invitation
   );
 }
 

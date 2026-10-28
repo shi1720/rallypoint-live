@@ -8,16 +8,28 @@ export class HttpError extends Error {
 }
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin)
+  const expected = process.env.SITE_URL
+    ? new URL(process.env.SITE_URL).origin
+    : new URL(request.url).origin;
+  if (!origin || origin !== expected)
     throw new HttpError(403, "This action must originate from Rallypoint.");
 }
-export async function readJson(request: Request, max = 12000): Promise<any> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+export async function readJson(
+  request: Request,
+  max = 12000,
+): Promise<Record<string, unknown>> {
   if (!request.headers.get("content-type")?.includes("application/json"))
     throw new HttpError(415, "Expected application/json.");
   const raw = await readLimited(request, max);
   try {
-    return JSON.parse(raw);
-  } catch {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) throw new HttpError(400, "Expected a JSON object.");
+    return parsed;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(400, "Invalid JSON.");
   }
 }

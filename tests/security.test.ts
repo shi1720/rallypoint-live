@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore Node's built-in type stripping requires explicit TypeScript file extensions.
 import {
   HttpError,
   sameOrigin,
@@ -221,6 +220,7 @@ async function webhookHarness() {
     lookupCalls: 0,
     integrationRow: { owner_id: "owner-1", broadcaster_id: "broadcaster-1" },
     mutationError: null,
+    queueError: null,
     changed: true,
   };
   harness.lookupOwner = async (broadcasterId: string) => {
@@ -233,22 +233,14 @@ async function webhookHarness() {
     harness.mutations.push(args);
     return { changed: harness.changed, reply: harness.reply };
   };
-  harness.flushReply = async (...args: unknown[]) => {
+  harness.enqueueReply = async (...args: unknown[]) => {
+    if (harness.queueError) throw harness.queueError;
     harness.flushes.push(args);
   };
-  harness.runtime = () => ({
-    TWITCH_WEBHOOK_SECRET: "audit-webhook-secret",
-    DB: {
-      prepare: (query: string) => ({
-        bind: (...values: unknown[]) => ({
-          run: async () => {
-            harness.writes.push({ query, values });
-            return { success: true };
-          },
-        }),
-      }),
-    },
-  });
+  harness.updateIntegrationError = async (owner: string, error: string) => {
+    harness.writes.push({ owner, error });
+  };
+  harness.runtime = () => ({ TWITCH_WEBHOOK_SECRET: "audit-webhook-secret" });
   (globalThis as any).__rallyAuditHarness = harness;
   const transpile = (source: string) =>
     ts.transpileModule(source, {
@@ -270,7 +262,13 @@ async function webhookHarness() {
       "export const mutateRoom=(...a)=>globalThis.__rallyAuditHarness.mutateRoom(...a); export const lookupOwner=(...a)=>globalThis.__rallyAuditHarness.lookupOwner(...a);",
     ),
     "./twitch": uri(
-      "export const integration=(...a)=>globalThis.__rallyAuditHarness.integration(...a); export const flushReply=(...a)=>globalThis.__rallyAuditHarness.flushReply(...a);",
+      "export const integration=(...a)=>globalThis.__rallyAuditHarness.integration(...a);",
+    ),
+    "./queue": uri(
+      "export const enqueueReply=(...a)=>globalThis.__rallyAuditHarness.enqueueReply(...a);",
+    ),
+    "./store": uri(
+      "export const updateIntegrationError=(...a)=>globalThis.__rallyAuditHarness.updateIntegrationError(...a);",
     ),
     "./env": uri(
       "export const runtime=()=>globalThis.__rallyAuditHarness.runtime();",
@@ -286,15 +284,9 @@ async function webhookHarness() {
     source = source
       .replaceAll(`'${path}'`, `'${replacement}'`)
       .replaceAll(`"${path}"`, `"${replacement}"`);
-  const module = await import(uri(source));
-  const pending: Promise<unknown>[] = [];
-  const handle = async (request: Request) => {
-    const response = await module.handleWebhook(request, {
-      waitUntil: (p: Promise<unknown>) => pending.push(p),
-    });
-    await Promise.all(pending.splice(0));
-    return response as Response;
-  };
+  const loadedModule = await import(uri(source));
+  const handle = async (request: Request) =>
+    (await loadedModule.handleWebhook(request)) as Response;
   const signed = async (
     payload: unknown,
     options: {
@@ -401,7 +393,7 @@ test("webhook drops cross-channel and shared-chat contributions", async () => {
   assert.equal(harness.mutations.length, 0);
 });
 
-test("webhook routes valid commands and drains pending outbox even on duplicate receipt", async () => {
+test("webhook routes valid commands and enqueues durable delivery even on duplicate receipt", async () => {
   const { harness, handle, signed } = await webhookHarness();
   harness.changed = false;
   assert.equal(
@@ -481,6 +473,54 @@ test("webhook erases no tokens on revocation and flags only the owning integrati
   );
   assert.equal(harness.mutations.length, 0);
   assert.equal(harness.writes.length, 1);
-  assert.match(harness.writes[0].query, /UPDATE integrations/);
-  assert.deepEqual(harness.writes[0].values, ["owner-1"]);
+  assert.equal(harness.writes[0].owner, "owner-1");
+  assert.match(harness.writes[0].error, /revoked an event subscription/);
+});
+
+test("a durable-queue failure requests Twitch redelivery instead of acknowledging a stranded reply", async () => {
+  const { harness, handle, signed } = await webhookHarness();
+  harness.queueError = new harness.HttpError(503, "PRIVATE_QUEUE_DIAGNOSTIC");
+  const first = await handle(await signed(chatPayload("!catchup")));
+  assert.equal(first.status, 503);
+  assert.equal(
+    (await first.text()).includes("PRIVATE_QUEUE_DIAGNOSTIC"),
+    false,
+  );
+  assert.equal(harness.mutations.length, 1);
+  harness.queueError = null;
+  harness.changed = false;
+  const redelivery = await handle(await signed(chatPayload("!catchup")));
+  assert.equal(redelivery.status, 204);
+  assert.deepEqual(harness.flushes, [["owner-1", "delivery-1"]]);
+});
+
+test("JSON primitives and arrays fail validation before route property access", async () => {
+  for (const value of [null, false, 42, "text", []]) {
+    await assert.rejects(
+      () =>
+        readJson(
+          new Request("https://example.com", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(value),
+          }),
+        ),
+      (error: any) => error.status === 400,
+    );
+  }
+});
+
+test("signed malformed webhook JSON is rejected before reading storage", async () => {
+  const { harness, handle, signed } = await webhookHarness();
+  for (const payload of [
+    null,
+    [],
+    42,
+    "text",
+    { subscription: null },
+    { subscription: { condition: [] } },
+  ]) {
+    assert.equal((await handle(await signed(payload))).status, 400);
+  }
+  assert.equal(harness.lookupCalls, 0);
 });

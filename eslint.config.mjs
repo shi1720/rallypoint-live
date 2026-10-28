@@ -5,6 +5,15 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["tests/**/*.test.ts"],
+    rules: {
+      // Dynamic module substitution and Firestore doubles intentionally model
+      // partial SDK objects. Production code retains the typed-boundary rules.
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-this-alias": "off",
+    },
+  },
   globalIgnores([
     "dist/**",
     ".vinext/**",

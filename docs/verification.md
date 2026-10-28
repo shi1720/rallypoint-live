@@ -1,39 +1,38 @@
-# Verification report
+# Verification record
 
-Observed on October 28, 2026. This report separates development verification from real Twitch proof.
+The Firebase release replaces the earlier Sites/Cloudflare runtime. Test results from that earlier deployment do not establish behavior of the migrated application.
 
-| Layer                       | Observed result                    | What it establishes                                                                                                                                                                                                                    |
-| --------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engine and security         | **59 passed, 0 failed**            | Versioned state, expiry/close, moderation boundaries, cooldowns, event-time ordering, privacy, bounded response size, AES-GCM/HMAC, payload limits, owner-scoped webhook routing and error handling                                    |
-| Actual local HTTP + D1      | **15 passed**                      | Anonymous studio denial, same-origin writes, forbidden synthetic events, input rejection, concurrent stale publish conflict, public projection, export, close, real Worker signature ingress, replay protection and signed raid timing |
-| TypeScript                  | **Passed**                         | Full project `tsc --noEmit`, including API handlers, UI and tests                                                                                                                                                                      |
-| Production build            | **Passed**                         | Vinext/Cloudflare Worker and client bundles compile with all routes                                                                                                                                                                    |
-| Fresh local migrations      | **Passed twice**                   | Both migrations apply to an empty isolated D1 database; second run correctly reports no migrations pending                                                                                                                             |
-| Browser, desktop            | **Reviewed**                       | Landing/rehearsal, simulated raid/newcomer, queue rejection/acceptance, explicit publish, cross-tab viewer synchronization, close, local sign-in gate                                                                                  |
-| Browser, narrow viewer page | **Reviewed at 390px**              | Readable phone-width public page without visible horizontal clipping                                                                                                                                                                   |
-| Pitch and PDF               | **Rendered and visually reviewed** | Six editable slides and four PDF pages checked for visible clipping/overlap                                                                                                                                                            |
-| Real Twitch OAuth / chat    | **Not yet verified**               | Needs broadcaster sign-in, app credentials and publicly reachable callback                                                                                                                                                             |
-| Actual OBS capture          | **Not yet verified**               | Browser overlay route implemented; must test in OBS with real Twitch footage                                                                                                                                                           |
-| Public judging access       | **Not yet verified**               | Initial hosted Site is owner-private; must enable public access and check signed out before submission                                                                                                                                 |
+## Verification layers
 
-## Dependency audit
+| Layer                  | Scope                                                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain tests           | Versioned publication, stale close/reset rejection, expiry, moderation boundaries, cooldowns, event-time ordering, replay handling, privacy, aggregate counts, and bounded state. |
+| Authentication helpers | Safe same-origin return paths and useful authentication errors without exposing provider diagnostics.                                                                             |
+| Storage tests          | Compressed private state, bounded decoding, Firestore document-size handling, and separate public snapshots.                                                                      |
+| Webhook/security tests | HMAC/AES-GCM, payload limits, signed routing, duplicate deliveries, error handling, and provider boundaries.                                                                      |
+| Deployed suite         | Actual Firebase identities and session cookies, owner isolation, Firestore transactions, public projections, signed fixture ingress, and session controls.                        |
+| Browser review         | Sign-in, guest/account behavior, real workspace controls, mobile layout, viewer freshness, and overlay preview. Record the exact observed deployment before claiming completion.  |
+| Real Twitch and OBS    | Requires broadcaster authorization, enabled subscriptions, actual chat commands/replies, and an actual OBS Browser Source. These remain separate release gates.                   |
 
-The inherited starter initially produced six production dependency findings, including critical advisories. Updated Next to 16.4.3, Zod to 4.6.7, sharp to 0.35.5 and affected transitive packages. A fresh clean install and `npm audit --omit=dev` now report zero known production dependency vulnerabilities. This registry check is time-specific and does not certify the application. All 59 tests and full TypeScript checks were rerun after the updates. CI repeats the production audit.
+Run the current automated checks with Node.js 24.12 or newer:
 
-## Deployed checkpoint
+```sh
+npm test
+npm run typecheck
+npm run build
+npm audit --omit=dev
+```
 
-Version 1 was published successfully from commit `b472d5b336d9e6f3fa176b8853729485d056f127`. A production service health check returned 200 and unauthenticated studio API access returned 401. GitHub CI passed: https://github.com/shi1720/rallypoint-live/actions/runs/40670486611 . Public access and real Twitch authorization remain pending.
+The designated operator suite is `tests/deployed-e2e.mjs`. Its signed fixtures traverse the deployed HTTP handler and Firestore transaction, but they are not live Twitch traffic. It creates isolated disposable users and records and removes its own fixtures. It requires operator access to the backing project and signing secret; normal application testers should use the public sample and sign-in flows instead.
 
-## Reproduce
+## Current limits on claims
 
-`npm test`, `npm run typecheck`, `npm run build`. For HTTP checks, run the migrated local dev server with the disposable test secret in `.dev.vars.example`, then `npm run test:http`. The HTTP suite refuses non-loopback URLs. Its fake Twitch events do not contact Twitch and must not be described as live traffic.
+No Twitch client credentials or completed broadcaster authorization are included in the repository. Until the real flow is observed, do not claim that the Firebase release has received actual Twitch chat, sent a real reply, or rendered in an actual OBS capture.
 
-The 59-test suite includes actual webhook-handler execution with mocked database/provider boundaries and cryptographically valid signatures. The separate HTTP test traverses the running Worker and local D1. Neither tests an external Twitch account, public webhook delivery, a production authentication gateway, billing behavior or large-channel load. There is no asserted security certification, uptime target, production scale benchmark, paid customer or retention lift.
+Do not equate a command during a raid welcome with verified raid membership or retention. Do not claim customers, paid checkout, large-channel capacity, an uptime commitment, or an independent security certification.
 
-## Browser evidence
+The current release run should record the deployed code revision, clean Firebase URL, observed test counts, CI result, browser sizes reviewed, and any unresolved external account step. The build agent updates this record from actual tool results rather than inheriting an earlier platform's test totals.
 
-The screenshots in `docs/images` show actual rendered application pages. They display explicit rehearsal labels. They are suitable for the gallery when labeled as rehearsal, and are not substitutes for the required real Twitch demonstration.
+## Earlier checkpoint
 
-## Release gate
-
-Before final Devpost submission, verify real OAuth and enabled subscriptions, type real commands in the authorized channel, observe the public page and actual OBS source, confirm close/expiry, upload a public video under three minutes, and check anonymous judging access. Preserve free judging access through the judging period. See checklist and the verbatim script.
+The initial implementation recorded 59 engine/security tests and 15 local D1 HTTP checks, plus a dependency audit and browser review. That is historical evidence for the former platform only. It is not the Firebase release acceptance result.

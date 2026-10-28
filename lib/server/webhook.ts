@@ -1,11 +1,16 @@
 import { mutateRoom, lookupOwner } from "./rooms";
-import { integration, flushReply } from "./twitch";
-import { constantEqual, hmac, readLimited, HttpError } from "./security";
+import { integration } from "./twitch";
+import { enqueueReply } from "./queue";
+import { updateIntegrationError } from "./store";
+import {
+  constantEqual,
+  hmac,
+  readLimited,
+  HttpError,
+  isRecord,
+} from "./security";
 import { runtime } from "./env";
-export async function handleWebhook(
-  request: Request,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
-) {
+export async function handleWebhook(request: Request) {
   if (request.method !== "POST")
     return new Response("Method not allowed", { status: 405 });
   const secret = runtime().TWITCH_WEBHOOK_SECRET;
@@ -31,18 +36,23 @@ export async function handleWebhook(
   const computed = "sha256=" + (await hmac(secret, id + time + raw));
   if (!constantEqual(computed, signature))
     return new Response("Invalid signature", { status: 403 });
-  let payload: any;
+  let payload: Record<string, unknown>;
   try {
-    payload = JSON.parse(raw);
+    const decoded: unknown = JSON.parse(raw);
+    if (!isRecord(decoded))
+      return new Response("Invalid JSON", { status: 400 });
+    payload = decoded;
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
   const sub = payload.subscription;
-  if (!sub?.condition)
+  if (!isRecord(sub) || !isRecord(sub.condition))
     return new Response("Invalid subscription", { status: 400 });
+  const condition = sub.condition;
   const broadcaster =
-    sub.condition.broadcaster_user_id ?? sub.condition.to_broadcaster_user_id;
-  if (!broadcaster) return new Response(null, { status: 204 });
+    condition.broadcaster_user_id ?? condition.to_broadcaster_user_id;
+  if (typeof broadcaster !== "string" || !broadcaster)
+    return new Response(null, { status: 204 });
   const match = await lookupOwner(broadcaster);
   if (!match) return new Response(null, { status: 204 });
   const row = await integration(match.owner_id);
@@ -58,22 +68,22 @@ export async function handleWebhook(
     });
   }
   if (type === "revocation") {
-    await runtime()
-      .DB.prepare(
-        "UPDATE integrations SET status='error',error='Twitch revoked an event subscription. Reconnect Twitch.' WHERE owner_id=?",
-      )
-      .bind(match.owner_id)
-      .run();
+    await updateIntegrationError(
+      match.owner_id,
+      "Twitch revoked an event subscription. Reconnect Twitch.",
+    );
     return new Response(null, { status: 204 });
   }
   if (type !== "notification")
     return new Response("Unsupported event", { status: 400 });
-  const event = payload.event;
+  const event = isRecord(payload.event) ? payload.event : null;
+  const message = event && isRecord(event.message) ? event.message : null;
   try {
     if (
       sub.type === "channel.chat.message" &&
-      event?.broadcaster_user_id === row.broadcaster_id &&
-      sub.condition.user_id === row.broadcaster_id
+      event &&
+      event.broadcaster_user_id === row.broadcaster_id &&
+      condition.user_id === row.broadcaster_id
     ) {
       if (
         event.source_broadcaster_user_id &&
@@ -81,27 +91,36 @@ export async function handleWebhook(
       )
         return new Response(null, { status: 204 });
       if (
-        typeof event.message?.text !== "string" ||
-        !/^!(join|vote|pitch|catchup)(\s|$)/i.test(event.message.text)
+        typeof message?.text !== "string" ||
+        !/^!(join|vote|pitch|catchup)(\s|$)/i.test(message.text) ||
+        typeof event.message_id !== "string" ||
+        typeof event.chatter_user_id !== "string" ||
+        typeof event.chatter_user_name !== "string"
       )
         return new Response(null, { status: 204 });
-      const result = await mutateRoom(
+      await mutateRoom(
         match.owner_id,
         {
           type: "chat",
           messageId: event.message_id,
           userId: event.chatter_user_id,
           name: event.chatter_user_name,
-          text: event.message.text,
+          text: message.text,
           at: time,
         },
         { id, parentId: event.message_id },
       );
-      ctx.waitUntil(flushReply(match.owner_id, id));
+      await enqueueReply(match.owner_id, id);
     } else if (
       sub.type === "channel.raid" &&
-      event?.to_broadcaster_user_id === row.broadcaster_id
+      event &&
+      event.to_broadcaster_user_id === row.broadcaster_id
     ) {
+      if (
+        typeof event.from_broadcaster_user_name !== "string" ||
+        typeof event.viewers !== "number"
+      )
+        return new Response(null, { status: 204 });
       await mutateRoom(
         match.owner_id,
         {

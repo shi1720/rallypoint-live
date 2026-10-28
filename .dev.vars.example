@@ -1,4 +1,0 @@
-# Disposable LOCAL webhook-smoke-test fixture. Never deploy this value.
-TWITCH_WEBHOOK_SECRET="rallypoint-local-test-secret-not-for-production"
-# Real local Twitch testing also needs the variables listed in README.
-# A Twitch webhook still requires a publicly reachable HTTPS callback.

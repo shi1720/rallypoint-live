@@ -1,26 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
   Check,
   ChevronRight,
-  ClipboardList,
-  Clock3,
-  Copy,
   ExternalLink,
   Flag,
   Inbox,
   LayoutDashboard,
+  LogOut,
   Link2,
   LoaderCircle,
   MessageSquare,
   Monitor,
-  MoreHorizontal,
-  Pause,
-  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -45,7 +41,6 @@ import type {
 import {
   Brand,
   Badge,
-  BriefCard,
   CopyButton,
   EmptyState,
   MissionMap,
@@ -57,6 +52,7 @@ import {
   useNow,
 } from "./shared";
 import { useRally } from "./use-rally";
+import { signOutUser } from "@/lib/firebase-client";
 
 type Tab = "desk" | "inbox" | "insights" | "setup";
 type Draft = Pick<
@@ -131,7 +127,14 @@ function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    ref.current?.showModal();
+    const previous = document.activeElement;
+    const dialog = ref.current;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus({ preventScroll: true });
+    };
   }, []);
   return (
     <dialog
@@ -540,8 +543,8 @@ function SetupPanel({
             Channel login
             <input
               required
-              pattern="[a-zA-Z0-9_]{3,25}"
-              minLength={3}
+              pattern="[a-zA-Z0-9_]{2,25}"
+              minLength={2}
               maxLength={25}
               value={channel}
               onChange={(e) => setChannel(e.target.value)}
@@ -553,7 +556,7 @@ function SetupPanel({
             Stream or series title
             <input
               required
-              maxLength={120}
+              maxLength={140}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="The community build"
@@ -761,13 +764,18 @@ function SetupPanel({
   );
 }
 export function Studio({ demo = false }: { demo?: boolean }) {
+  const router = useRouter();
   const app = useRally(demo),
     now = useNow();
   const [tab, setTab] = useState<Tab>("desk"),
     [editor, setEditor] = useState(false),
     [editorSeed, setEditorSeed] = useState<string | undefined>(),
-    [closeConfirm, setCloseConfirm] = useState(false),
-    [resetConfirm, setResetConfirm] = useState(false),
+    [closeConfirm, setCloseConfirm] = useState<number | null>(null),
+    [resetConfirm, setResetConfirm] = useState<number | null>(null),
+    [resetBackedUp, setResetBackedUp] = useState(false),
+    [dialogError, setDialogError] = useState(""),
+    [signingOut, setSigningOut] = useState(false),
+    [signOutConfirm, setSignOutConfirm] = useState(false),
     [toast, setToast] = useState(""),
     [chatName, setChatName] = useState("new_viewer"),
     [chatText, setChatText] = useState("!join A"),
@@ -777,6 +785,8 @@ export function Studio({ demo = false }: { demo?: boolean }) {
     if (demo) return;
     const outcome = new URLSearchParams(window.location.search).get("twitch");
     if (!outcome) return;
+    // Apply the browser-only OAuth return state after the initial hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab("setup");
     if (outcome === "connected")
       setToast("Twitch authorized. Verifying chat and raid subscriptions.");
@@ -790,6 +800,21 @@ export function Studio({ demo = false }: { demo?: boolean }) {
       );
   }, [demo]);
   const notify = (message: string) => setToast(message);
+  const signOut = async () => {
+    setSigningOut(true);
+    setDialogError("");
+    try {
+      await signOutUser();
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not sign out.";
+      if (signOutConfirm) setDialogError(message);
+      else notify(message);
+      setSigningOut(false);
+    }
+  };
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 5000);
@@ -835,7 +860,10 @@ export function Studio({ demo = false }: { demo?: boolean }) {
   const download = () => {
     if (!state) return;
     if (!demo) {
-      window.location.assign("/api/export");
+      const link = document.createElement("a");
+      link.href = "/api/export";
+      link.download = "rallypoint-session.json";
+      link.click();
       return;
     }
     const blob = new Blob(
@@ -918,10 +946,22 @@ export function Studio({ demo = false }: { demo?: boolean }) {
             <p>Every regular was new once. Give them a way into the story.</p>
           </div>
           <div className="sidebar-credit">
-            <div className="avatar">SG</div>
+            <div className="avatar">
+              {demo
+                ? "RP"
+                : (app.user?.name || "You").slice(0, 2).toUpperCase()}
+            </div>
             <div>
-              <strong>Shivam Gupta</strong>
-              <span>Creator · Built with Codex</span>
+              <strong>
+                {demo ? "Sample community" : app.user?.name || "Your workspace"}
+              </strong>
+              <span>
+                {demo
+                  ? "Practice at your own pace"
+                  : app.user?.isAnonymous
+                    ? "Browser workspace"
+                    : "Creator account"}
+              </span>
             </div>
           </div>
         </div>
@@ -950,6 +990,22 @@ export function Studio({ demo = false }: { demo?: boolean }) {
                     : "Twitch disconnected"}
               </Badge>
             )}
+            {!demo && app.user && (
+              <button
+                type="button"
+                className="topbar-signout"
+                disabled={signingOut}
+                onClick={() => {
+                  if (app.user?.isAnonymous) {
+                    setDialogError("");
+                    setSignOutConfirm(true);
+                  } else void signOut();
+                }}
+              >
+                <LogOut size={14} />
+                {signingOut ? "Signing out" : "Sign out"}
+              </button>
+            )}
             <a href={demo ? "/studio" : "/demo"} className="topbar-link">
               {demo ? "Open real desk" : "Try rehearsal"}{" "}
               <ArrowUpRight size={13} />
@@ -963,7 +1019,13 @@ export function Studio({ demo = false }: { demo?: boolean }) {
               <strong>A working rehearsal.</strong> All chat, raids, names, and
               metrics here are simulated.
             </span>
-            <button onClick={() => setResetConfirm(true)}>
+            <button
+              onClick={() => {
+                setResetConfirm(state?.revision ?? 0);
+                setDialogError("");
+                setResetBackedUp(false);
+              }}
+            >
               Reset scenario <RefreshCw size={12} />
             </button>
           </div>
@@ -1052,15 +1114,15 @@ export function Studio({ demo = false }: { demo?: boolean }) {
               <h2>Sign in. Set the scene.</h2>
               <p>
                 Your briefs, review queue, and stream history belong to you.
-                Sign in with ChatGPT to open your desk, then connect Twitch when
-                you’re ready.
+                Sign in to open your desk, then connect Twitch when you’re
+                ready.
               </p>
               <a
-                href="/signin-with-chatgpt?return_to=%2Fstudio"
+                href="/signin?return_to=%2Fstudio"
                 target="_top"
                 className="btn btn-primary"
               >
-                Sign in with ChatGPT <ArrowRight size={16} />
+                Open your workspace <ArrowRight size={16} />
               </a>
               <a href="/demo" className="text-link">
                 Explore the rehearsal first <ArrowUpRight size={14} />
@@ -1077,6 +1139,68 @@ export function Studio({ demo = false }: { demo?: boolean }) {
             </EmptyState>
           ) : (
             <>
+              {!demo && app.user?.isAnonymous && (
+                <div className="workspace-guest-note">
+                  <ShieldCheck size={17} />
+                  <p>
+                    Saved to this browser.{" "}
+                    <a href="/signin?mode=signup&return_to=%2Fstudio">
+                      Create an account
+                    </a>{" "}
+                    to use this workspace across devices.
+                  </p>
+                </div>
+              )}
+              {!demo && state.contributions.length >= 4000 && (
+                <div className="capacity-notice" role="status">
+                  <div>
+                    <strong>This session is nearly full.</strong>
+                    <p>
+                      Export your data and start a new session before reaching
+                      the 5,000 contribution limit.
+                    </p>
+                  </div>
+                  <button
+                    className="btn btn-quiet btn-small"
+                    onClick={() => {
+                      setTab("setup");
+                    }}
+                  >
+                    Open session controls <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
+              {!demo && state.brief.version === 0 && (
+                <section
+                  className="onboarding-strip"
+                  aria-label="Your first stream setup"
+                >
+                  <div>
+                    <span className="onboarding-step">1</span>
+                    <strong>Publish your first brief</strong>
+                    <p>Start from a template and make it yours.</p>
+                  </div>
+                  <div>
+                    <span className="onboarding-step">2</span>
+                    <strong>Connect Twitch</strong>
+                    <p>Authorize the channel where chat will take part.</p>
+                  </div>
+                  <div>
+                    <span className="onboarding-step">3</span>
+                    <strong>Bring it on stream</strong>
+                    <p>Use your viewer link and transparent OBS overlay.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-small"
+                    onClick={() => {
+                      setTab("setup");
+                    }}
+                  >
+                    Channel setup <ArrowRight size={14} />
+                  </button>
+                </section>
+              )}
               {tab === "desk" && (
                 <>
                   <div className="metric-grid">
@@ -1102,7 +1226,7 @@ export function Studio({ demo = false }: { demo?: boolean }) {
                       label="Brief status"
                       value={
                         active
-                          ? "On air"
+                          ? "Published"
                           : state.brief.status === "draft"
                             ? "Draft"
                             : state.brief.status === "closed"
@@ -1191,7 +1315,10 @@ export function Studio({ demo = false }: { demo?: boolean }) {
                             <button
                               className="btn btn-quiet btn-small"
                               disabled={!active || app.busy}
-                              onClick={() => setCloseConfirm(true)}
+                              onClick={() => {
+                                setCloseConfirm(state.brief.version);
+                                setDialogError("");
+                              }}
                             >
                               <Square size={12} /> Close chapter
                             </button>
@@ -1707,6 +1834,30 @@ export function Studio({ demo = false }: { demo?: boolean }) {
                     onToast={notify}
                     onRefresh={app.refresh}
                   />
+                  {!demo && (
+                    <section className="panel session-controls">
+                      <div>
+                        <span className="eyebrow">SESSION CONTROLS</span>
+                        <h2>A fresh start for your next stream</h2>
+                        <p>
+                          Export your session before clearing its briefs,
+                          contributions, pitches, and activity. Your Twitch
+                          connection and viewer links stay in place.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-quiet"
+                        onClick={() => {
+                          setResetConfirm(state.revision);
+                          setResetBackedUp(false);
+                          setDialogError("");
+                        }}
+                      >
+                        Start new session <RefreshCw size={15} />
+                      </button>
+                    </section>
+                  )}
                   <div className="workspace-footer">
                     <span>
                       <ShieldCheck size={14} /> Your workspace persists across
@@ -1722,10 +1873,7 @@ export function Studio({ demo = false }: { demo?: boolean }) {
           )}
           <footer className="desk-footer">
             <span>RALLYPOINT / GIVE EVERY VIEWER A WAY IN.</span>
-            <span>
-              Created by Shivam Gupta <span className="footer-dot">·</span>{" "}
-              Built with Codex
-            </span>
+            <span>Your community. Your next chapter.</span>
           </footer>
         </main>
       </div>
@@ -1746,16 +1894,64 @@ export function Studio({ demo = false }: { demo?: boolean }) {
           }}
         />
       )}
-      {closeConfirm && (
+      {signOutConfirm && (
+        <Modal
+          title="Keep access to your workspace?"
+          description="This guest workspace is saved to this browser. Signing out removes this browser's access unless you first link an account. Create an account to keep your workspace."
+          onClose={() => {
+            if (!signingOut) setSignOutConfirm(false);
+          }}
+        >
+          {dialogError && (
+            <div className="inline-error" role="alert">
+              {dialogError}
+            </div>
+          )}
+          <div className="dialog-actions" style={{ flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={signingOut}
+              onClick={() => setSignOutConfirm(false)}
+            >
+              Stay here
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={signingOut}
+              onClick={() =>
+                router.push("/signin?mode=signup&return_to=%2Fstudio")
+              }
+            >
+              Create account
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={signingOut}
+              onClick={() => void signOut()}
+            >
+              {signingOut ? "Signing out" : "Sign out anyway"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {closeConfirm !== null && (
         <Modal
           title="Ready for the next chapter?"
           description="Closing this chapter stops participation and removes the old action from your viewer page, overlay, and chat response. The decision totals stay in your history."
-          onClose={() => setCloseConfirm(false)}
+          onClose={() => setCloseConfirm(null)}
         >
+          {dialogError && (
+            <div className="inline-error" role="alert">
+              {dialogError}
+            </div>
+          )}
           <div className="dialog-actions">
             <button
               className="btn btn-quiet"
-              onClick={() => setCloseConfirm(false)}
+              onClick={() => setCloseConfirm(null)}
             >
               Keep it live
             </button>
@@ -1763,11 +1959,23 @@ export function Studio({ demo = false }: { demo?: boolean }) {
               className="btn btn-primary"
               disabled={app.busy}
               onClick={async () => {
-                await run(
-                  { type: "close" },
-                  "Chapter closed. Old participation commands are now inactive.",
-                );
-                setCloseConfirm(false);
+                setDialogError("");
+                try {
+                  await app.dispatch({
+                    type: "close",
+                    expectedVersion: closeConfirm,
+                  });
+                  notify(
+                    "Chapter closed. Old participation commands are now inactive.",
+                  );
+                  setCloseConfirm(null);
+                } catch (error) {
+                  setDialogError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not close this chapter.",
+                  );
+                }
               }}
             >
               Close chapter <Check size={15} />
@@ -1775,29 +1983,86 @@ export function Studio({ demo = false }: { demo?: boolean }) {
           </div>
         </Modal>
       )}
-      {resetConfirm && (
+      {resetConfirm !== null && (
         <Modal
-          title="Start a fresh rehearsal?"
-          description="This clears your simulated changes and restores Bubbles’s rescue. Your real creator workspace is unaffected."
-          onClose={() => setResetConfirm(false)}
+          title={
+            demo ? "Start a fresh rehearsal?" : "Start a new stream session?"
+          }
+          description={
+            demo
+              ? "This clears your simulated changes and restores Bubbles's rescue. Your real creator workspace is unaffected."
+              : "This clears the current brief, contribution history, pitches, and activity. Your Twitch connection and public links stay in place. Export first if you want to keep this session."
+          }
+          onClose={() => setResetConfirm(null)}
         >
+          {!demo && (
+            <div className="session-reset-options">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={download}
+              >
+                <ArrowDownToLine size={16} /> Export this session
+              </button>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={resetBackedUp}
+                  onChange={(event) => setResetBackedUp(event.target.checked)}
+                />
+                <span>
+                  I have exported anything I want to keep and am ready to clear
+                  this session.
+                </span>
+              </label>
+            </div>
+          )}
+          {dialogError && (
+            <div className="inline-error" role="alert">
+              {dialogError}
+            </div>
+          )}
           <div className="dialog-actions">
             <button
               className="btn btn-quiet"
-              onClick={() => setResetConfirm(false)}
+              onClick={() => setResetConfirm(null)}
             >
-              Keep exploring
+              Keep this session
             </button>
             <button
               className="btn btn-primary"
-              onClick={() => {
-                app.reset();
-                setReply("");
-                setResetConfirm(false);
-                notify("Fresh scenario ready.");
+              disabled={app.busy || (!demo && !resetBackedUp)}
+              onClick={async () => {
+                setDialogError("");
+                try {
+                  if (demo) app.reset();
+                  else
+                    await app.dispatch({
+                      type: "reset",
+                      expectedRevision: resetConfirm,
+                    });
+                  setReply("");
+                  setResetConfirm(null);
+                  notify(
+                    demo
+                      ? "Fresh scenario ready."
+                      : "New session ready. Publish the first brief when you are ready.",
+                  );
+                } catch (error) {
+                  setDialogError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not start a new session.",
+                  );
+                }
               }}
             >
-              Reset rehearsal <RefreshCw size={15} />
+              {app.busy ? (
+                <LoaderCircle size={15} className="spin" />
+              ) : (
+                <RefreshCw size={15} />
+              )}{" "}
+              {demo ? "Reset rehearsal" : "Clear and start new session"}
             </button>
           </div>
         </Modal>

@@ -1,9 +1,14 @@
-import { runtime } from "../../../lib/server/env";
+import { store } from "../../../lib/server/store";
 export async function GET() {
   try {
-    await runtime().DB.prepare("SELECT 1 AS ok").first();
+    await store().collection("health").doc("connectivity").get();
     return Response.json(
-      { status: "ok", service: "rallypoint", version: "1.0.0" },
+      {
+        status: "ok",
+        service: "rallypoint",
+        version: "2.0.0",
+        revision: process.env.RELEASE_REVISION || "development",
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

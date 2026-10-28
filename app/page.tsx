@@ -2,9 +2,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Check,
-  Radio,
   ShieldCheck,
-  Sparkles,
   Users,
   Terminal,
   Layers,
@@ -48,10 +46,10 @@ export default function Home() {
           </div>
           <div className="hero-footnote">
             <span>
-              <Check size={13} /> No payment or API key to rehearse
+              <Check size={13} /> Try it before connecting Twitch
             </span>
             <span>
-              <Check size={13} /> Built with Codex
+              <Check size={13} /> Creator controls included
             </span>
           </div>
         </div>
@@ -87,8 +85,8 @@ export default function Home() {
               <span>save the axolotl.</span>
             </h2>
             <p>
-              Chat named him Bubbles. Now he’s stranded. Two routes, one rescue
-              — and everyone gets a say.
+              Chat named him Bubbles. Now he’s stranded. Two routes, one rescue.
+              Everyone gets a say.
             </p>
             <div className="sample-vote">
               <code>!join A</code>
@@ -181,8 +179,8 @@ export default function Home() {
           </h2>
           <p>
             Made for shared challenges, collaborative builds, and communities
-            with a story in progress. No audio recording, model subscription, or
-            per-message AI bill required.
+            with a story in progress. Your current context stays in your
+            control. No audio recording or per-message AI costs.
           </p>
           <a href="/demo" className="text-link">
             Run a two-minute rehearsal <ArrowRight size={17} />
@@ -223,7 +221,7 @@ export default function Home() {
       </section>
       <footer className="landing-footer">
         <Brand />
-        <p>Created by Shivam Gupta · Built with OpenAI Codex</p>
+        <p>A little context. A real role.</p>
         <div>
           <a href="/studio">Creator desk</a>
           <a href="/demo">

@@ -42,6 +42,7 @@ export type Activity = {
   at: string;
 };
 export type RallyState = {
+  chatReady?: boolean;
   publicMetrics?: {
     currentContributors: number;
     counts: Record<string, number>;
@@ -74,7 +75,7 @@ export type Action =
       >;
       expectedVersion?: number;
     }
-  | { type: "close" }
+  | { type: "close"; expectedVersion?: number }
   | { type: "review"; proposalId: string; decision: "accepted" | "rejected" }
   | {
       type: "chat";
@@ -93,7 +94,7 @@ export type Action =
     }
   | { type: "open" }
   | { type: "settings"; channel: string; sessionTitle: string }
-  | { type: "reset" };
+  | { type: "reset"; expectedRevision?: number };
 export type Transition = {
   state: RallyState;
   reply?: string;
@@ -114,7 +115,7 @@ export type Connection = {
 export type RoomResponse = {
   state: RallyState;
   connection: Connection;
-  user: { name: string };
+  user: { name: string; isAnonymous?: boolean };
   publicUrl: string;
   overlayUrl: string;
 };
