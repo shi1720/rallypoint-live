@@ -1,0 +1,25 @@
+{
+  "verifiedAt": "2026-10-28T18:00:53Z",
+  "videoId": "W0e7IDiO93g",
+  "url": "https://www.youtube.com/watch?v=W0e7IDiO93g",
+  "title": "Rallypoint | Give every Twitch viewer a way in",
+  "visibility": "public",
+  "durationSeconds": 164.733333,
+  "sha256": "60bcc5608e1431a94ff22eb9ed4065a5828a3d0730c6155a88043a0243b61fd7",
+  "manualEnglishTrackPublished": true,
+  "manualEnglishSeenInPublicPlayer": true,
+  "publicPlaybackVerified": true,
+  "initialCopyrightCheck": "No issues found",
+  "initialCommunityGuidelinesCheck": "No issues found",
+  "aiNarrationDisclosed": true,
+  "devpostSavedVideoUrl": "https://www.youtube.com/watch?v=W0e7IDiO93g",
+  "devpostObservedStatus": "Submitted, 5/5 steps done",
+  "supersededVideo": {
+    "videoId": "CbFh_5jZIUE",
+    "visibility": "unlisted",
+    "sourceUnchanged": true
+  },
+  "finalPrizeEntryActionPerformedByAgent": false,
+  "public1080pAvailable": true,
+  "devpostPublicEmbedVideoId": "W0e7IDiO93g"
+}

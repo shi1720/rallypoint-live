@@ -2,7 +2,7 @@
 
 **Application:** https://rallypoint-desk.web.app
 **Repository:** https://github.com/shi1720/rallypoint-live
-**Public video:** https://www.youtube.com/watch?v=CbFh_5jZIUE
+**Public video:** https://www.youtube.com/watch?v=W0e7IDiO93g
 **Devpost preview:** https://devpost.com/software/rallypoint-y08snc
 
 The current source uses native Next.js, Firebase Authentication, the named `rallypoint` Firestore database, Cloud Run, and Cloud Tasks. The earlier private Sites URL and mock ChatGPT sign-in are no longer the testing path.
@@ -16,12 +16,13 @@ The current source uses native Next.js, Firebase Authentication, the named `rall
 
 Follow `docs/testing-instructions.md`. The operator's deployed suite is `tests/deployed-e2e.mjs`; it needs Google Cloud access and uses disposable signed fixtures. It is not a substitute for real Twitch proof.
 
-## External release gates
+## Release status and ownership
 
-1. Preserve the connected shi1720 workspace in this browser. Use Create an account to upgrade the guest identity before clearing browser data or signing out. Real broadcaster authorization, both enabled EventSub subscriptions, actual catchup replies, vote replacement, private pitch review, separate publication and closed-chapter refusal have passed. See `docs/live-twitch-verification.json`.
-2. Review and publish the updated video containing genuine Twitch proof. Its actual source captures are complete; the existing public video still uses labeled simulated chat and raids.
-3. Verify the optional OBS Browser Source when the Mac is unlocked. OBS is not required to use the web app or chat workflow.
-4. Devpost now displays Submitted, 5/5 steps done, with personal attestations completed. The agent observed that state and did not perform the final prize-entry action. The story and technology explanation were updated with real Twitch results. The remaining media task is replacing the old video link after the new upload is approved and verified.
+- Real broadcaster authorization, both enabled EventSub subscriptions, actual catchup replies, one-vote replacement, private pitch review, separate publication and closed-chapter refusal passed. See `docs/live-twitch-verification.json`.
+- The updated 2:45 video is public, with genuine Twitch proof at 00:36 to 01:03 and a published manual English subtitle track. Devpost retained its new URL. The older V1 is unlisted.
+- Devpost displays Submitted, 5/5 steps done, with completed personal attestations. The agent observed that state and did not perform the final prize-entry action. The story and technology explanation include real Twitch results.
+- Preserve the connected shi1720 workspace in this browser. Use **Create an account** to upgrade the guest identity before clearing browser data or signing out. The original public links and connected state survived tab cleanup and reopening.
+- Native OBS verification and a genuine incoming raid remain unverified. OBS is optional for the web app and chat workflow. Raid demonstrations remain explicitly simulated.
 
 Rallypoint Desk is registered under shi1720 with the canonical Firebase callback. Its credentials were validated with Twitch and stored in Google Secret Manager for the deployed backend. Temporary local credential files were removed. Cloud Run revision `rallypoint-00008-mwh` serves the same verified application source `06e5005`. The real chat pipeline has now passed the manual provider checks. A genuine incoming raid and native OBS remain unverified. Do not pass the sample or signed fixtures off as real Twitch traffic.
 

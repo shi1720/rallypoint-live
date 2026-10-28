@@ -37,12 +37,12 @@ An unchecked item is unresolved. This checklist does not certify eligibility, a 
 - [x] Save the user-provided residence and Codex survey answers.
 - [x] Observe Devpost displays Submitted and 5/5 steps done after the user-facing handoff.
 - [x] Observe the disabled Project submitted control. The agent did not perform the final prize-entry action.
-- [ ] Replace the submitted video URL with the verified genuine-chat cut before **November 3, 2026 at 3:30 a.m. India time**.
+- [x] Replace the submitted video URL with the verified genuine-chat cut before **November 3, 2026 at 3:30 a.m. India time**.
 
 ## Submission location
 
 https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions/1268954/project-overview
 
-The submitted entry includes the public YouTube walkthrough at https://www.youtube.com/watch?v=CbFh_5jZIUE and the main build session ID verified from the Codex runtime. Twitch app registration, 2FA, developer authorization and secure credential configuration are complete. Broadcaster chat access and actual test commands are now verified in shi1720. The replacement public video is being prepared from those captures. Preserve the connected guest identity and upgrade before clearing browser data.
+The submitted entry includes the public YouTube walkthrough at https://www.youtube.com/watch?v=W0e7IDiO93g and the main build session ID verified from the Codex runtime. Twitch app registration, 2FA, developer authorization and secure credential configuration are complete. Broadcaster chat access and actual test commands are now verified in shi1720. The replacement 2:45 video is public with genuine proof, published English captions and the updated Devpost link. V1 is unlisted. Preserve the connected guest identity and upgrade before clearing browser data.
 
 The four criteria are equally weighted: innovation, potential impact, implementation, and design. A private review score does not predict an award. Source fixtures, browser screenshots, and a real Twitch recording establish different things and must remain clearly identified.

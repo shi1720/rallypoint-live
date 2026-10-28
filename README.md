@@ -6,7 +6,7 @@ A viewer arrives halfway through a stream. The regulars know the goal, the stake
 
 **App:** [rallypoint-desk.web.app](https://rallypoint-desk.web.app)
 **Source:** [github.com/shi1720/rallypoint-live](https://github.com/shi1720/rallypoint-live)
-**Demo:** [Watch the captioned product walkthrough](https://www.youtube.com/watch?v=CbFh_5jZIUE)
+**Demo:** [Watch the captioned product walkthrough](https://www.youtube.com/watch?v=W0e7IDiO93g)
 
 Created by Shivam Gupta with OpenAI Codex as an implementation collaborator. The runtime is deterministic. It does not need an OpenAI API key or continuous audio transcription.
 

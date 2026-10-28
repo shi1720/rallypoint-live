@@ -1,6 +1,6 @@
 # Rallypoint demo narration
 
-The current narration is about 2 minutes 18 seconds. All sample chat, names, raids and metrics are explicitly simulated. The video contains actual product captures.
+The finished V2 is 2:44.73. Read the paragraphs below verbatim; do not speak the headings. The real-channel segment uses actual timestamped Twitch screenshots with idle time omitted. All sample chat, names, raids and metrics remain explicitly simulated.
 
 ## A way into the story
 
@@ -9,6 +9,10 @@ You arrive halfway through a stream. Everyone knows why the bridge matters. You 
 ## One current brief
 
 This is the creator's participation desk. We'll use a sample rescue, with simulated chat and raid events, to show the workflow. Bubbles is stranded across a ravine. Choose a starter, set the context, and publish a brief with two rescue routes and an expiry. The same approved version reaches the viewer page and OBS overlay.
+
+## Real Twitch chat
+
+Now here's the same workflow in a real Twitch channel. The broadcaster authorized Rallypoint. Typing exclamation mark catchup in Twitch chat returns the published brief. Exclamation mark join A sends a contribution through Twitch EventSub. Back in Rallypoint, the count updates for this chapter. Those are real Twitch messages, using the same one vote per viewer rule.
 
 ## Make the next step obvious
 

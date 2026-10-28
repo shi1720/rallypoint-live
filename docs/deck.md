@@ -15,4 +15,4 @@ The deck uses the current Firestore architecture and public Firebase URL. It rec
 
 Page ID: `page_d521ae77fbf48191a45ec0a198e21389`
 
-Live artifact reference: `artifact_external_273f696e-f993-48f8-bfbd-5d79ba4068da`
+Live artifact reference: `artifact_external_5eb53c51-a1f5-43aa-a092-3b6e36925c5f`

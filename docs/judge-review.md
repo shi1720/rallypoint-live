@@ -43,7 +43,7 @@ The inspected real workspace is labeled as a browser-owned guest workspace. Pres
 
 ### Reconcile the final submission materials
 
-Update every remaining pending-OAuth or unverified-chat statement to match the proof matrix above. Keep the release revision, test counts, application URL, public video, captions, and Devpost fields consistent. V2 media was being assembled at this review checkpoint; this review does not claim its final upload or playback has been verified.
+Update every remaining pending-OAuth or unverified-chat statement to match the proof matrix above. Keep the release revision, test counts, application URL, public video, captions, and Devpost fields consistent. At the reviewer's checkpoint, V2 media was being assembled. The coordinator subsequently verified public V2 publication, playback, the manual English caption track, the saved Devpost link and V1's unlisted status. Those publication observations are coordinator-reported, not an additional independent browser review.
 
 Put the genuine catchup reply and A-to-B vote replacement early in the video. Crop the empty chat area so the actual message and response are legible. Explain the self-authored integration-test pitch accurately. Keep simulated raids continuously labeled and do not imply native OBS footage or independent community adoption.
 
