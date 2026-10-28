@@ -16,6 +16,10 @@ Observed on October 28, 2026. This report separates development verification fro
 | Actual OBS capture          | **Not yet verified**               | Browser overlay route implemented; must test in OBS with real Twitch footage                                                                                                                                                           |
 | Public judging access       | **Not yet verified**               | Initial hosted Site is owner-private; must enable public access and check signed out before submission                                                                                                                                 |
 
+## Dependency audit
+
+The inherited starter initially produced six production dependency findings, including critical advisories. Updated Next to 16.4.3, Zod to 4.6.7, sharp to 0.35.5 and affected transitive packages. A fresh clean install and `npm audit --omit=dev` now report zero known production dependency vulnerabilities. This registry check is time-specific and does not certify the application. All 59 tests and full TypeScript checks were rerun after the updates. CI repeats the production audit.
+
 ## Deployed checkpoint
 
 Version 1 was published successfully from commit `b472d5b336d9e6f3fa176b8853729485d056f127`. A production service health check returned 200 and unauthenticated studio API access returned 401. GitHub CI passed: https://github.com/shi1720/rallypoint-live/actions/runs/40670486611 . Public access and real Twitch authorization remain pending.
