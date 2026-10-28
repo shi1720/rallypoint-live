@@ -11,8 +11,8 @@ Verified October 28, 2026. Application: https://rallypoint-desk.web.app
 - Native Next production build passes.
 - Production dependency audit reports zero vulnerabilities.
 - GitHub CI passed for source `06e50056ac2ff8b384348e4bc024d3e08999ed0c`: https://github.com/shi1720/rallypoint-live/actions/runs/40695556107
-- The exact-source Cloud Run release `rallypoint-00007-x58` reports that source revision through `/api/health`.
-- 41 hosted HTTP checks passed at 2026-10-28T13:25:29Z. The suite uses actual Firebase identities, server sessions, Firestore transactions, and Cloud Tasks invoking the worker. Twitch-shaped fixtures are cryptographically signed test events, not live Twitch evidence.
+- The exact-source Cloud Run release `rallypoint-00008-mwh` reports that source revision through `/api/health`.
+- 41 hosted HTTP checks passed at 2026-10-28T14:57:44Z. The suite uses actual Firebase identities, server sessions, Firestore transactions, and Cloud Tasks invoking the worker. Twitch-shaped fixtures are cryptographically signed test events, not live Twitch evidence.
 
 The signed callback check verifies the raw challenge body, status, media type and required Content-Length through the actual Firebase HTTPS endpoint. Permission-denial regressions cover immediate atomic public pausing, token rotation, reconnect races, rollback and owner isolation.
 
@@ -32,7 +32,7 @@ The Devpost draft contains the saved story, testing appendix, app and source lin
 
 ## Proof boundaries
 
-Actual broadcaster OAuth, enabled real EventSub subscriptions, real chat responses and an actual OBS capture remain unverified because Twitch developer credentials are not configured. The account is signed in, and app creation/secure credential configuration is approved, but Twitch rejected registration until the account owner enables two-factor authentication. The application displays that configuration state. Public pages fail closed when fresh state or chat readiness is missing.
+The Twitch developer application is registered and its credentials are validated and configured through Secret Manager. The deployed creator desk shows Ready to authorize. Actual broadcaster OAuth, enabled real EventSub subscriptions and real chat responses remain unverified while the user reviews the requested chat/bot authorization and live test-message permission. Native OBS verification is paused while the Mac is locked; OBS is optional for web and chat use. Public pages fail closed when fresh state or chat readiness is missing.
 
 No customer adoption, retention lift, revenue or paid checkout is claimed. Polling and storage still incur operational usage despite zero model inference calls. See the independent review and operating assumptions before a paid launch.
 

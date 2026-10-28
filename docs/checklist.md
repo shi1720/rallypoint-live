@@ -16,7 +16,7 @@ An unchecked item is unresolved. This checklist does not certify eligibility, a 
 
 ## Real Twitch proof
 
-- [ ] Configure the confidential Twitch app with `https://rallypoint-desk.web.app/api/twitch/callback`.
+- [x] Configure the confidential Twitch app with `https://rallypoint-desk.web.app/api/twitch/callback`.
 - [ ] Authorize the broadcaster and verify enabled chat and incoming raid subscriptions.
 - [ ] Exercise real `!catchup`, `!join A/B`, and `!pitch` commands and observe actual replies/state updates.
 - [ ] Verify review rejection never publishes private text, and accepting still requires explicit publication.
@@ -40,6 +40,6 @@ An unchecked item is unresolved. This checklist does not certify eligibility, a 
 
 https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions/1268954/project-overview
 
-The current draft includes the public YouTube walkthrough at https://www.youtube.com/watch?v=CbFh_5jZIUE and the main build session ID verified from the Codex runtime. Twitch app registration is prepared, but Twitch rejected creation until account two-factor authentication is enabled.
+The current draft includes the public YouTube walkthrough at https://www.youtube.com/watch?v=CbFh_5jZIUE and the main build session ID verified from the Codex runtime. Twitch app registration, 2FA, developer authorization and secure credential configuration are complete. Broadcaster chat access and real test messages await the user's approval.
 
 The four criteria are equally weighted: innovation, potential impact, implementation, and design. A private review score does not predict an award. Source fixtures, browser screenshots, and a real Twitch recording establish different things and must remain clearly identified.

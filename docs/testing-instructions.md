@@ -31,15 +31,15 @@ Guest state is real server-side state, owned by the browser's verified Firebase 
 
 ## Real Twitch and OBS
 
-This path needs a configured Twitch application and a broadcaster account that the tester controls. No shared test account, passwords, or Twitch secrets are included in the repository.
+The public deployment already has operator credentials configured. Testers need a broadcaster account they control and can connect it from Channel setup. For an independent deployment, first register and configure your own confidential Twitch application. No shared test account, passwords, or Twitch secrets are included in the repository.
 
-1. Register or select a confidential Twitch application. Add `https://rallypoint-desk.web.app/api/twitch/callback` as its exact redirect URL.
-2. The deployment operator configures the client ID and secret. In the creator desk, connect the broadcaster and approve the requested chat/bot scopes.
+1. On the public deployment, open **Channel setup** in the creator desk and select **Connect Twitch**. For an independent deployment, first follow the operator setup in the README with the exact callback `https://rallypoint-desk.web.app/api/twitch/callback`.
+2. Authorize the broadcaster account you control and review the requested chat/bot scopes.
 3. Verify that both chat and incoming raid subscriptions become enabled. A pending authorization is not proof of event delivery.
 4. Publish a current brief and type real `!catchup`, `!join A`, `!join B`, and `!pitch Useful context` commands in that channel.
 5. Observe actual chat replies, decision changes, and the private inbox. Review a pitch and explicitly publish any text chosen for the brief.
-6. In OBS, add the actual overlay URL as a Browser Source at 1280 by 720. Confirm that changes reach OBS and that its background is transparent.
-7. Close or expire the chapter. Confirm that old participation stops in chat, on the viewer page, and in OBS.
+6. If using the optional OBS overlay, add the actual overlay URL as a Browser Source at 1280 by 720. Confirm that changes reach OBS and that its background is transparent.
+7. Close or expire the chapter. Confirm that old participation stops in chat, on the viewer page, and in OBS when used.
 8. Use a genuine incoming raid when available. If demonstrating a simulated raid, keep a visible simulation label and describe it accurately.
 
 Until these steps are observed, real Twitch authorization, real message delivery, and actual OBS behavior remain unverified.

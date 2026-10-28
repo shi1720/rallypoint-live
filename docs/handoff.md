@@ -18,11 +18,12 @@ Follow `docs/testing-instructions.md`. The operator's deployed suite is `tests/d
 
 ## External release gates
 
-1. Configure the Twitch application's client ID and confidential secret. Its redirect must be `https://rallypoint-desk.web.app/api/twitch/callback`.
-2. Authorize a broadcaster account that the tester controls. Verify enabled chat and incoming raid subscriptions, real commands/replies, and the actual OBS Browser Source.
-3. Review the personal eligibility attestations in Devpost and perform the final entry submission yourself. The story, media, links, creator credit and user-supplied survey answers are saved. A prepared draft is not a final submitted entry.
+1. Approve Rallypoint Desk's chat/bot authorization for the broadcaster account and permission to post the requested test commands. Verify both enabled EventSub subscriptions and actual replies and state updates.
+2. Capture the real Twitch segment and review the updated public demo. The existing public video uses labeled simulated chat and raids.
+3. Verify the optional OBS Browser Source when the Mac is unlocked. OBS is not required to use the web app or chat workflow.
+4. Review the personal eligibility attestations in Devpost and perform the final entry submission yourself. The story, media, links, creator credit and user-supplied survey answers are saved. A prepared draft is not a final submitted entry.
 
-Twitch is signed in as shi1720. Registration of Rallypoint Desk is prepared and authorized, but Twitch requires the account owner to enable two-factor authentication before it allows creation. The account-specific Twitch steps remain unverified until actually observed. Do not pass the sample scenario or signed fixtures off as real Twitch traffic.
+Rallypoint Desk is registered under shi1720 with the canonical Firebase callback. Its credentials were validated with Twitch and stored in Google Secret Manager for the deployed backend. Temporary local credential files were removed. Cloud Run revision `rallypoint-00008-mwh` serves the same verified application source `06e5005`. The remaining Twitch gate is broadcaster chat authorization and actual provider testing, not developer-key setup. Do not pass the sample or signed fixtures off as real Twitch traffic.
 
 ## Submission materials
 
