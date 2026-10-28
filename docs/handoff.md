@@ -18,12 +18,12 @@ Follow `docs/testing-instructions.md`. The operator's deployed suite is `tests/d
 
 ## External release gates
 
-1. Approve Rallypoint Desk's chat/bot authorization for the broadcaster account and permission to post the requested test commands. Verify both enabled EventSub subscriptions and actual replies and state updates.
-2. Capture the real Twitch segment and review the updated public demo. The existing public video uses labeled simulated chat and raids.
+1. Preserve the connected shi1720 workspace in this browser. Use Create an account to upgrade the guest identity before clearing browser data or signing out. Real broadcaster authorization, both enabled EventSub subscriptions, actual catchup replies, vote replacement, private pitch review, separate publication and closed-chapter refusal have passed. See `docs/live-twitch-verification.json`.
+2. Review and publish the updated video containing genuine Twitch proof. Its actual source captures are complete; the existing public video still uses labeled simulated chat and raids.
 3. Verify the optional OBS Browser Source when the Mac is unlocked. OBS is not required to use the web app or chat workflow.
-4. Review the personal eligibility attestations in Devpost and perform the final entry submission yourself. The story, media, links, creator credit and user-supplied survey answers are saved. A prepared draft is not a final submitted entry.
+4. Devpost now displays Submitted, 5/5 steps done, with personal attestations completed. The agent observed that state and did not perform the final prize-entry action. The story and technology explanation were updated with real Twitch results. The remaining media task is replacing the old video link after the new upload is approved and verified.
 
-Rallypoint Desk is registered under shi1720 with the canonical Firebase callback. Its credentials were validated with Twitch and stored in Google Secret Manager for the deployed backend. Temporary local credential files were removed. Cloud Run revision `rallypoint-00008-mwh` serves the same verified application source `06e5005`. The remaining Twitch gate is broadcaster chat authorization and actual provider testing, not developer-key setup. Do not pass the sample or signed fixtures off as real Twitch traffic.
+Rallypoint Desk is registered under shi1720 with the canonical Firebase callback. Its credentials were validated with Twitch and stored in Google Secret Manager for the deployed backend. Temporary local credential files were removed. Cloud Run revision `rallypoint-00008-mwh` serves the same verified application source `06e5005`. The real chat pipeline has now passed the manual provider checks. A genuine incoming raid and native OBS remain unverified. Do not pass the sample or signed fixtures off as real Twitch traffic.
 
 ## Submission materials
 
@@ -36,6 +36,6 @@ Rallypoint Desk is registered under shi1720 with the canonical Firebase callback
 
 The final video, narration, SRT/VTT captions, thumbnail, metadata and production report are in the delivery folder alongside the source repository. The four-page field guide describes the Firebase release and links to the public video. The supplementary deck is a separate pitch aid, not evidence of authentic Twitch activity.
 
-Main Codex build session, verified from the Codex runtime and entered in the draft: `01a181e2-464a-7302-821d-a300d09b283c`.
+Main Codex build session, verified from the Codex runtime and entered in the submission: `01a181e2-464a-7302-821d-a300d09b283c`.
 
 Shivam Gupta is the creator and directed the product ambition, commercial constraints, and review priorities. Codex assisted with research, implementation, testing, refinement, and documentation. No fictional creator interviews, paid traction, retention lift, or human contributions have been added to the record.

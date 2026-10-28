@@ -17,29 +17,32 @@ An unchecked item is unresolved. This checklist does not certify eligibility, a 
 ## Real Twitch proof
 
 - [x] Configure the confidential Twitch app with `https://rallypoint-desk.web.app/api/twitch/callback`.
-- [ ] Authorize the broadcaster and verify enabled chat and incoming raid subscriptions.
-- [ ] Exercise real `!catchup`, `!join A/B`, and `!pitch` commands and observe actual replies/state updates.
-- [ ] Verify review rejection never publishes private text, and accepting still requires explicit publication.
+- [x] Authorize the broadcaster and verify enabled chat and incoming raid subscriptions.
+- [x] Exercise real `!catchup`, `!join A/B`, and `!pitch` commands and observe actual replies/state updates.
+- [x] Verify rejected rehearsal pitches stay off the public brief and a real accepted pitch still requires explicit publication.
 - [ ] Verify the actual OBS Browser Source updates and has a transparent background.
-- [ ] Verify close/expiry ends the old participation action across all surfaces.
-- [ ] Record a genuine raid or keep its simulation visibly and verbally disclosed.
+- [x] Verify closure ends real Twitch participation and removes the viewer invitation; signed fixtures and browser checks cover expiry.
+- [ ] Verify that end-state behavior in native OBS.
+- [x] Keep simulated raid demonstrations visibly and verbally disclosed.
+- [ ] Observe a genuine incoming raid when available.
 
 ## Entry materials
 
-- [ ] Shivam personally verifies age, residence, conflicts, and eligibility under the [official rules](https://twitchcon-codex.devpost.com/rules).
+- [x] Observe completed personal attestations in the submitted entry. Eligibility remains the entrant's responsibility under the [official rules](https://twitchcon-codex.devpost.com/rules); the agent does not independently certify it.
 - [x] Review the Project Story in `docs/devpost-submission.md` and the actual current feature set.
 - [x] Provide the public source repository: https://github.com/shi1720/rallypoint-live.
-- [ ] Provide tester instructions and keep free judging access available through the judging period.
+- [x] Provide tester instructions and public access without a paywall. Keep the deployment available through the judging period.
 - [x] Verify the main Codex build session ID before entering it.
 - [x] Upload and verify a public YouTube video under three minutes with legible authentic functionality and a concise Codex development segment.
 - [x] Save the user-provided residence and Codex survey answers.
-- [ ] Complete the personal eligibility attestations after Shivam reviews them.
-- [ ] Review all saved Devpost fields and submit before **November 3, 2026 at 3:30 a.m. India time**.
+- [x] Observe Devpost displays Submitted and 5/5 steps done after the user-facing handoff.
+- [x] Observe the disabled Project submitted control. The agent did not perform the final prize-entry action.
+- [ ] Replace the submitted video URL with the verified genuine-chat cut before **November 3, 2026 at 3:30 a.m. India time**.
 
-## Draft location
+## Submission location
 
 https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions/1268954/project-overview
 
-The current draft includes the public YouTube walkthrough at https://www.youtube.com/watch?v=CbFh_5jZIUE and the main build session ID verified from the Codex runtime. Twitch app registration, 2FA, developer authorization and secure credential configuration are complete. Broadcaster chat access and real test messages await the user's approval.
+The submitted entry includes the public YouTube walkthrough at https://www.youtube.com/watch?v=CbFh_5jZIUE and the main build session ID verified from the Codex runtime. Twitch app registration, 2FA, developer authorization and secure credential configuration are complete. Broadcaster chat access and actual test commands are now verified in shi1720. The replacement public video is being prepared from those captures. Preserve the connected guest identity and upgrade before clearing browser data.
 
 The four criteria are equally weighted: innovation, potential impact, implementation, and design. A private review score does not predict an award. Source fixtures, browser screenshots, and a real Twitch recording establish different things and must remain clearly identified.

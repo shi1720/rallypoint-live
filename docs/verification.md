@@ -24,15 +24,21 @@ The public Firebase deployment was tested in Chrome at normal desktop size and a
 
 The rehearsal demonstrated voting and vote replacement, untrusted pitch dismissal, acceptance followed by separate editing/publication, a labeled simulated raid, chapter closure, and viewer/overlay updates. The overlay HTML, body and root all have transparent computed backgrounds. This is a browser-source preview, not an assertion that OBS or a Twitch stream was recorded.
 
+## Genuine Twitch checkpoint
+
+[Manual live-channel evidence record](live-twitch-verification.json). On October 28, 2026, the authorized shi1720 account completed OAuth, and Twitch confirmed both chat and incoming raid subscriptions enabled. Real `!catchup` returned the matching published brief in a threaded Twitch reply; its durable outbox record was `sent`. Real `!join A` recorded one contributor, and `!join B` replaced the choice without increasing that count. The desk and public viewer agreed.
+
+A clearly labeled, self-authored `!pitch` entered private review and stayed off the public API and brief. Accepting it did not publish. A separate edit and explicit publish produced version3 with fresh current counts. Closing that chapter removed the old invitation from the viewer page. A subsequent real `!join A` returned the no-active-brief response in Twitch, with a sent outbox record and no new contribution. These observations are separate from the signed-fixture suite.
+
 ## Published materials
 
 The 2 minute 18 second [product walkthrough](https://www.youtube.com/watch?v=CbFh_5jZIUE) is public on Shivam Gupta's YouTube channel. Its title, description, custom thumbnail, playback, and English transcript were verified in the browser. The walkthrough uses genuine application captures with continuously labeled simulated chat and raid events. It has narration, burned captions, and an uploaded English subtitle track. YouTube reported no issues in its initial copyright and Community Guidelines checks.
 
-The Devpost draft contains the saved story, testing appendix, app and source links, video, three captioned screenshots, thumbnail, tagline, creator credit, main build session ID, and user-provided survey answers. Personal eligibility attestations and final entry submission remain with Shivam.
+Devpost now displays SUBMITTED, 5/5 steps done, completed personal attestations and the disabled Project submitted control. This status was observed after the user-facing handoff; the agent did not perform the final prize-entry action. The submitted story and technology explanation have been updated with genuine Twitch results. The app and source links, video V1, three captioned screenshots, thumbnail, tagline, creator credit, main build session ID and user-provided survey answers are saved. Replacement media remains in preparation.
 
 ## Proof boundaries
 
-The Twitch developer application is registered and its credentials are validated and configured through Secret Manager. The deployed creator desk shows Ready to authorize. Actual broadcaster OAuth, enabled real EventSub subscriptions and real chat responses remain unverified while the user reviews the requested chat/bot authorization and live test-message permission. Native OBS verification is paused while the Mac is locked; OBS is optional for web and chat use. Public pages fail closed when fresh state or chat readiness is missing.
+The Twitch developer application and credentials are configured through Secret Manager, and the genuine channel checks above passed. They used one consenting broadcaster account outside a live broadcast. No genuine incoming raid or native OBS capture is claimed. OBS is optional for web and chat use. Public pages fail closed when fresh state or chat readiness is missing. The connected browser still owns a guest workspace; preserve its identity and upgrade through Create an account before clearing browser data or signing out.
 
 No customer adoption, retention lift, revenue or paid checkout is claimed. Polling and storage still incur operational usage despite zero model inference calls. See the independent review and operating assumptions before a paid launch.
 

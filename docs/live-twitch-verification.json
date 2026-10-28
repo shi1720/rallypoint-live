@@ -1,0 +1,68 @@
+{
+  "verifiedAt": "2026-10-28T16:41:04Z",
+  "application": "https://rallypoint-desk.web.app",
+  "applicationRevision": "06e50056ac2ff8b384348e4bc024d3e08999ed0c",
+  "cloudRunRevision": "rallypoint-00008-mwh",
+  "broadcaster": "shi1720",
+  "liveTwitchVerified": true,
+  "method": "Actual authorized Twitch browser chat, deployed application views, selected Firestore outbox status, and Twitch Helix subscription listing. No signed fixture is counted as real channel traffic.",
+  "checks": [
+    {
+      "check": "Broadcaster OAuth",
+      "result": "passed",
+      "observed": "Rallypoint connected to shi1720 after approved four-scope authorization."
+    },
+    {
+      "check": "EventSub subscriptions",
+      "result": "passed",
+      "observed": "channel.chat.message and channel.raid both enabled at the canonical Firebase callback."
+    },
+    {
+      "check": "Real !catchup",
+      "result": "passed",
+      "observed": "Threaded Twitch reply matched published brief version2; committed outbox status sent."
+    },
+    {
+      "check": "Real !join A",
+      "result": "passed",
+      "observed": "Version2 showed one contributor,A1/B0 in creator desk and public viewer."
+    },
+    {
+      "check": "Real !join B replacement",
+      "result": "passed",
+      "observed": "Same contributor changed to A0/B1; total remained one."
+    },
+    {
+      "check": "Real labeled !pitch",
+      "result": "passed",
+      "observed": "Self-authored integration-test pitch reached private review and was absent from public API and brief."
+    },
+    {
+      "check": "Accept without publication",
+      "result": "passed",
+      "observed": "Accepted pitch remained off the public brief; version2 and counts unchanged."
+    },
+    {
+      "check": "Separate edited publication",
+      "result": "passed",
+      "observed": "Edited approved context published explicitly as version3, with fresh zero current contributions."
+    },
+    {
+      "check": "Closure propagation",
+      "result": "passed",
+      "observed": "Version3 closed; public viewer removed old invitation and command-copy controls."
+    },
+    {
+      "check": "Real command after closure",
+      "result": "passed",
+      "observed": "Subsequent !join A received a no-active-brief reply in Twitch, outbox sent, and closed counts stayed zero."
+    }
+  ],
+  "limits": [
+    "One consenting broadcaster account, outside a live broadcast. No independent community adoption is claimed.",
+    "A genuine incoming raid has not been observed; raid demonstrations remain labeled simulated.",
+    "Native OBS Browser Source remains unverified and optional.",
+    "The connected workspace is browser-owned Firebase guest state. Upgrade before clearing that identity or signing out.",
+    "This manual checkpoint is separate from the112 local tests and41 signed-fixture hosted checks."
+  ]
+}

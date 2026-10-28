@@ -42,7 +42,7 @@ The public deployment already has operator credentials configured. Testers need 
 7. Close or expire the chapter. Confirm that old participation stops in chat, on the viewer page, and in OBS when used.
 8. Use a genuine incoming raid when available. If demonstrating a simulated raid, keep a visible simulation label and describe it accurately.
 
-Until these steps are observed, real Twitch authorization, real message delivery, and actual OBS behavior remain unverified.
+The designated shi1720 channel passed the real OAuth, subscription, catchup, vote replacement, private pitch, separate publication and closed-chapter refusal checks on October 28, 2026. See `live-twitch-verification.json`. Testers connecting another channel should still perform the steps above. A genuine incoming raid and actual OBS behavior remain unverified. OBS is optional.
 
 ## Automated verification
 

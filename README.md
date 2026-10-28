@@ -154,3 +154,5 @@ Signed fixtures are not real Twitch traffic. Follow the separate live Twitch ste
 - [Build record](docs/codex-build-log.md)
 
 MIT license. Shivam Gupta supplied the product direction and commercial constraints. Codex assisted with implementation, reviews, tests, and documentation. Twitch and OpenAI names identify integrations and the development tool; they do not imply endorsement.
+
+Genuine Twitch channel verification is recorded separately in [the manual provider checkpoint](docs/live-twitch-verification.json). The authorized shi1720 channel passed real catchup delivery, one-vote replacement, private pitch review, explicit publication and closed-chapter refusal. These self-authored checks do not establish independent adoption, a genuine incoming raid or native OBS behavior.

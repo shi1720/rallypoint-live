@@ -49,7 +49,7 @@ The strongest result is a small workflow with clear boundaries. A newcomer gets 
 
 The implementation includes version checks, signed event verification, replay handling, owner isolation, encrypted authorization, public-data minimization, and session export/reset. The test suite covers failure cases as well as the intended path. The deployed test suite uses actual Firebase identities and Firestore transactions, while keeping signed fixtures distinct from real Twitch traffic.
 
-The current verification record is linked in the repository. Actual Twitch authorization, real channel traffic, and OBS capture must be checked separately; a simulated sample is not presented as proof of those external integrations.
+The current verification record is linked in the repository. In the authorized shi1720 channel, real Twitch messages returned the published brief, recorded and replaced one vote, and delivered a labeled test pitch to private review. Acceptance alone did not publish it. An explicit edited publication started the next chapter, and a command after closure returned a no-active-brief response. Both real EventSub subscriptions were enabled. These checks used one consenting broadcaster account; they are separate from the simulated sample and signed fixtures. A genuine incoming raid and native OBS capture remain unverified.
 
 ## What we learned
 
@@ -61,4 +61,4 @@ We also learned that lower model costs do not remove operational costs. Polling,
 
 We will test the workflow with creators who run recurring challenges and collaborative streams. The next questions are whether maintaining a brief saves effort, whether creators reuse it on another stream, and whether newcomers understand their next move faster.
 
-A proposed managed plan at $12 per month is a pricing hypothesis, not an implemented checkout or claimed revenue. Six creator interviews and three pilots will test demand before expanding into team moderation or additional premium features. The immediate release gate is authentic Twitch authorization, real commands, and OBS footage using the current Firebase deployment.
+A proposed managed plan at $12 per month is a pricing hypothesis, not an implemented checkout or claimed revenue. Six creator interviews and three pilots will test demand before expanding into team moderation or additional premium features. The genuine Twitch chat pipeline has passed its first end-to-end channel check. Next we will validate repeated creator use, incoming raids with a consenting channel, and the optional OBS Browser Source before a wider commercial launch.
