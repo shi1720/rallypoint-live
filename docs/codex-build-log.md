@@ -36,3 +36,10 @@ The release replaced the previous platform-specific authentication and D1 storag
 The current local suite passes 99 tests. Hosted checks use actual Firebase guest and email/password identities, owner-isolated Firestore transactions, secure sessions, public snapshots, and Cloud Tasks invoking the worker. Signed Twitch-shaped fixtures exercise the webhook and replay boundaries. These fixtures do not establish real broadcaster OAuth, chat delivery, or Twitch-stream evidence.
 
 Independent review found and fixed stale command invitations, background token revocation, guest sign-out access loss, oversized storage, command truncation and a queue IAM configuration issue. The final deployment is verified separately in docs/verification.md.
+
+
+## Firebase release verification
+
+The deployed application source is `06e50056ac2ff8b384348e4bc024d3e08999ed0c`. The final checkpoint passed 112 local tests, full lint and TypeScript checks, the production build, GitHub CI and 41 hosted checks. Production dependencies have zero reported audit vulnerabilities. The hosted checks use real Firebase identities, Firestore transactions and Cloud Tasks, with explicitly signed Twitch-shaped fixtures. The callback contract is checked through Firebase HTTPS, including the raw challenge and Content-Length.
+
+The public captioned walkthrough is https://www.youtube.com/watch?v=CbFh_5jZIUE. Devpost contains the saved story, links, screenshots, thumbnail, video and user-provided survey answers. The main Codex session ID was verified from the runtime. Twitch account sign-in is available, but developer-app registration was rejected because account two-factor authentication is disabled. Authentic Twitch authorization, replies and actual OBS capture remain separate release gates.

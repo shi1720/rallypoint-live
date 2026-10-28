@@ -1,0 +1,12 @@
+{
+  "passed": 41,
+  "origin": "https://rallypoint-desk.web.app",
+  "verifiedAt": "2026-10-28T13:25:29.974Z",
+  "actualFirebaseAuth": true,
+  "actualFirestore": true,
+  "actualCloudTasks": true,
+  "signedTwitchFixtures": true,
+  "liveTwitchVerified": false,
+  "applicationRevision": "06e50056ac2ff8b384348e4bc024d3e08999ed0c",
+  "cloudRunRevision": "rallypoint-00007-x58"
+}

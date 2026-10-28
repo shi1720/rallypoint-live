@@ -9,8 +9,8 @@ An unchecked item is unresolved. This checklist does not certify eligibility, a 
 - [x] Verify real guest and email/password sessions, owner isolation, sign-out, and guest upgrade.
 - [x] Verify publish/edit/close, stale confirmations, export, and real session reset.
 - [x] Verify viewer and overlay freshness behavior, including disconnected Twitch readiness.
-- [ ] Run the current domain/security/storage checks, TypeScript, build, dependency audit, and deployed operator suite.
-- [ ] Record the exact revision, test results, CI status, and browser review evidence in `docs/verification.md`.
+- [x] Run the current domain/security/storage checks, TypeScript, build, dependency audit, and deployed operator suite.
+- [x] Record the exact revision, test results, CI status, and browser review evidence in `docs/verification.md`.
 - [x] Confirm responsive layout and accessible dialog/form controls at desktop and phone widths.
 - [x] Confirm deployment secrets are excluded from source and build context.
 

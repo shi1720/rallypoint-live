@@ -39,7 +39,7 @@ The current app runs on **native Next.js 16 and Node.js 24.12+**. Firebase Hosti
 
 Cloud Firestore uses the named **`rallypoint`** database. Private session state is compressed and size-bounded so the documented 5,000-contribution session limit does not exceed Firestore's 1 MiB document limit. A separate public snapshot keeps viewer reads small and excludes private records. Firestore transactions commit state, delivery receipts, and reply outbox entries together. Stale publish, close, and reset confirmations fail instead of overwriting newer work.
 
-Twitch webhooks authenticate the exact raw body with HMAC-SHA256. Delivery receipts and underlying chat-message IDs prevent duplicate processing. Signed event times stop delayed commands from entering a later chapter. Cloud Tasks delivers committed outbox work to a signed internal handler. Replies are rate-limited; ambiguous sends are not blindly retried because the Twitch chat endpoint does not offer an application idempotency key.
+Twitch webhooks authenticate the exact raw body with HMAC-SHA256. Delivery receipts and underlying chat-message IDs prevent duplicate processing. Signed event times stop delayed commands from entering a later chapter. Cloud Tasks delivers committed outbox work to a signed internal handler. Replies are rate-limited; ambiguous sends are not blindly retried because the Twitch chat endpoint does not offer an application idempotency key. A definitive chat authorization denial atomically pauses public invitations for that exact authorization. A newer reconnect or rotated token is protected from an older failed request.
 
 ```mermaid
 flowchart LR
