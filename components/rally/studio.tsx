@@ -1250,7 +1250,9 @@ export function Studio({ demo = false }: { demo?: boolean }) {
                           <Badge kind={active ? "lime" : "muted"}>
                             {active
                               ? "PUBLISHED"
-                              : state.brief.status.toUpperCase()}
+                              : state.brief.status === "live"
+                                ? "EXPIRED"
+                                : state.brief.status.toUpperCase()}
                           </Badge>
                         </div>
                         <button

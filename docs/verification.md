@@ -1,38 +1,31 @@
-# Verification record
+# Release verification
 
-The Firebase release replaces the earlier Sites/Cloudflare runtime. Test results from that earlier deployment do not establish behavior of the migrated application.
+Verified October 28, 2026. Application: https://rallypoint-desk.web.app
 
-## Verification layers
+## Observed results
 
-| Layer                  | Scope                                                                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Domain tests           | Versioned publication, stale close/reset rejection, expiry, moderation boundaries, cooldowns, event-time ordering, replay handling, privacy, aggregate counts, and bounded state. |
-| Authentication helpers | Safe same-origin return paths and useful authentication errors without exposing provider diagnostics.                                                                             |
-| Storage tests          | Compressed private state, bounded decoding, Firestore document-size handling, and separate public snapshots.                                                                      |
-| Webhook/security tests | HMAC/AES-GCM, payload limits, signed routing, duplicate deliveries, error handling, and provider boundaries.                                                                      |
-| Deployed suite         | Actual Firebase identities and session cookies, owner isolation, Firestore transactions, public projections, signed fixture ingress, and session controls.                        |
-| Browser review         | Sign-in, guest/account behavior, real workspace controls, mobile layout, viewer freshness, and overlay preview. Record the exact observed deployment before claiming completion.  |
-| Real Twitch and OBS    | Requires broadcaster authorization, enabled subscriptions, actual chat commands/replies, and an actual OBS Browser Source. These remain separate release gates.                   |
+- 99 local automated tests pass.
+- Full ESLint and TypeScript checks pass.
+- Native Next production build passes.
+- Production dependency audit reports zero vulnerabilities.
+- GitHub CI passed for source `48033cc491efd0a9a4c33527e954362037fd9992`: https://github.com/shi1720/rallypoint-live/actions/runs/40682410971
+- The exact-source Cloud Run release `rallypoint-00005-klh` reports that source revision through `/api/health`.
+- 40 hosted HTTP checks passed at 2026-10-28T11:59:08Z. The suite uses actual Firebase identities, server sessions, Firestore transactions, and Cloud Tasks invoking the worker. Twitch-shaped fixtures are cryptographically signed test events, not live Twitch evidence.
 
-Run the current automated checks with Node.js 24.12 or newer:
+The hosted suite verifies guest authentication, guest-to-email linking without changing owner identity, email/password login, secure cookies, malformed input rejection, owner isolation, stale publish/close/reset protection, public data minimization, browser-open deduplication, webhook signatures and replay, durable outbox delivery, worker authentication, export, closure propagation and guarded session reset. It removes only the test accounts and records it creates.
 
-```sh
-npm test
-npm run typecheck
-npm run build
-npm audit --omit=dev
-```
+## Browser checks
 
-The designated operator suite is `tests/deployed-e2e.mjs`. Its signed fixtures traverse the deployed HTTP handler and Firestore transaction, but they are not live Twitch traffic. It creates isolated disposable users and records and removes its own fixtures. It requires operator access to the backing project and signing secret; normal application testers should use the public sample and sign-in flows instead.
+The public Firebase deployment was tested in Chrome at normal desktop size and a 390 by 844 device-emulation viewport. Home, workspace and account upgrade pages showed no horizontal overflow. A real browser guest workspace was created, a starter was edited and published, and the saved brief survived reload. Empty publication was rejected. The browser downloaded a valid authenticated JSON export containing no integration credentials. Callback copying produced the exact canonical URL. New-session controls require an explicit export acknowledgment. Guest sign-out warns about access loss and offers an account upgrade; staying in the workspace preserves access.
 
-## Current limits on claims
+The rehearsal demonstrated voting and vote replacement, untrusted pitch dismissal, acceptance followed by separate editing/publication, a labeled simulated raid, chapter closure, and viewer/overlay updates. The overlay HTML, body and root all have transparent computed backgrounds. This is a browser-source preview, not an assertion that OBS or a Twitch stream was recorded.
 
-No Twitch client credentials or completed broadcaster authorization are included in the repository. Until the real flow is observed, do not claim that the Firebase release has received actual Twitch chat, sent a real reply, or rendered in an actual OBS capture.
+## Proof boundaries
 
-Do not equate a command during a raid welcome with verified raid membership or retention. Do not claim customers, paid checkout, large-channel capacity, an uptime commitment, or an independent security certification.
+Actual broadcaster OAuth, enabled real EventSub subscriptions, real chat responses and an actual OBS capture remain unverified because Twitch account sign-in and developer credentials are pending. The application displays that configuration state. Public pages fail closed when fresh state or chat readiness is missing.
 
-The current release run should record the deployed code revision, clean Firebase URL, observed test counts, CI result, browser sizes reviewed, and any unresolved external account step. The build agent updates this record from actual tool results rather than inheriting an earlier platform's test totals.
+No customer adoption, retention lift, revenue or paid checkout is claimed. Polling and storage still incur operational usage despite zero model inference calls. See the independent review and operating assumptions before a paid launch.
 
-## Earlier checkpoint
+## Reproduce
 
-The initial implementation recorded 59 engine/security tests and 15 local D1 HTTP checks, plus a dependency audit and browser review. That is historical evidence for the former platform only. It is not the Firebase release acceptance result.
+Use Node.js 24.12 or newer. Run `npm ci`, `npm run lint`, `npm test`, `npm run typecheck`, `npm run build`, and `npm audit --omit=dev --audit-level=moderate`. The cloud-maintainer suite is `npm run test:http`; it needs gcloud access to this deployment for its scoped fixture setup and cleanup. Judges can test the public rehearsal and guest workspace without cloud-admin credentials. See testing-instructions.md.

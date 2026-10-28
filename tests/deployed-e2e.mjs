@@ -147,6 +147,13 @@ try {
     ).r.status === 403,
     "cross-origin session creation is rejected",
   );
+  const badBodies = await Promise.all(
+    [null, [], 42].map((body) => api("/api/auth/session", { body })),
+  );
+  check(
+    badBodies.every(({ r }) => r.status === 400),
+    "malformed session JSON returns validation errors rather than server failures",
+  );
   ownerA = await guest();
   ownerB = await guest();
   roomA = (await api("/api/room", { cookie: ownerA.cookie })).data;
@@ -432,6 +439,28 @@ try {
   check(
     !JSON.stringify(contributed.data.state).includes("fixture-viewer"),
     "hosted public results do not expose Twitch identities",
+  );
+  const malformedId = randomUUID(),
+    malformedTime = new Date().toISOString(),
+    malformedRaw = "null";
+  const malformedWebhook = await fetch(origin + "/api/twitch/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Twitch-Eventsub-Message-Id": malformedId,
+      "Twitch-Eventsub-Message-Timestamp": malformedTime,
+      "Twitch-Eventsub-Message-Type": "notification",
+      "Twitch-Eventsub-Message-Signature":
+        "sha256=" +
+        createHmac("sha256", secret)
+          .update(malformedId + malformedTime + malformedRaw)
+          .digest("hex"),
+    },
+    body: malformedRaw,
+  });
+  check(
+    malformedWebhook.status === 400,
+    "even signed malformed webhook JSON is rejected before data access",
   );
   const queuedDelivery = randomUUID();
   fixtures[0].outboxKeys = [
